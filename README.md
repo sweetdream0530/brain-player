@@ -115,8 +115,8 @@ pip install -e .
 
 ### Running Validator
 
-`python neurons/validator.py --subtensor.network test --wallet.name test_validator --wallet.hotkey h1 --netuid 250 --logging.info`
+`python neurons/validator.py --subtensor.network test --wallet.name test_validator --wallet.hotkey h1 --netuid 335 --logging.info`
 
 ### Running Miner
 
-`python neurons/miner.py --subtensor.network test --wallet.name test_miner --wallet.hotkey h1 --netuid 250 --logging.info`
+`python neurons/miner.py --subtensor.network test --wallet.name test_miner --wallet.hotkey h1 --netuid 35 --logging.info`
