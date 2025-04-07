@@ -75,14 +75,17 @@ async def forward(self):
     # The dendrite client queries the network.
     # organize team
     (red_team, blue_team) = organize_team(self, miner_uids)
-    # ! TODO red_team and blue_team are organized with only 1 miner for testing purposes
-    red_team = {"spymaster": 1, "operative": 1}
-    blue_team = {"spymaster": 1, "operative": 1}
-    bt.logging.info(f"Red Team: {red_team}")
-    bt.logging.info(f"Blue Team: {blue_team}")
+    # # ! TODO red_team and blue_team are organized with only 1 miner for testing purposes
+    # red_team = {"spymaster": 1, "operative": 1}
+    # blue_team = {"spymaster": 1, "operative": 1}
+    bt.logging.info(f"\033[91mRed Team: {red_team}\033[0m")
+    bt.logging.info(f"\033[94mBlue Team: {blue_team}\033[0m")
     # * Initialize game
     game_step = 0
+    # TODO: Add team info to the game state
     game_state = GameState()
+    validator_key = self.wallet.hotkey.ss58_address
+    # We will use validator_key as id of the game because one validator can only play one game at a time
     # TODO: API to report the team with the initial state
     # * Game loop until game is over
     while game_state.gameWinner is None:
@@ -134,12 +137,14 @@ async def forward(self):
             # All responses have the deserialize function called on them before returning.
             # You are encouraged to define your own deserialization function.
             deserialize=True,
+            timeout=10, # TODO: Update timeout limit
         )
         # TODO: handle response timeout
         if len(responses) == 0 or responses[0] is None:
             game_state.gameWinner = TeamColor.RED if game_state.currentTeam == TeamColor.BLUE else TeamColor.BLUE
             resetAnimations(self, game_state.cards)
             bt.logging.info(f"💀 No response received! Game over. Winner: {game_state.gameWinner}")
+            # TODO: notify backend that game is over becaouse currentTeam didn't respond in time
             break
 
         if game_state.currentRole == Role.SPYMASTER:
@@ -162,7 +167,7 @@ async def forward(self):
             bt.logging.info(f"Guessed cards: {guesses}")
             bt.logging.info(f"Reasoning: {reasoning}")
             # * Update the game state
-
+            choose_assasin = False
             for guess in guesses:
                 card = next((c for c in game_state.cards if c.word == guess), None)
                 if card is None or card.is_revealed:
@@ -176,13 +181,17 @@ async def forward(self):
                     game_state.remainingBlue -= 1
 
                 if card.color == "assassin":
+                    choose_assasin = True
                     game_state.gameWinner = TeamColor.RED if game_state.currentTeam == TeamColor.BLUE else TeamColor.BLUE
                     resetAnimations(self, game_state.cards)
                     bt.logging.info(f"💀 Assassin card found! Game over. Winner: {game_state.gameWinner}")
+                    # TODO: notify backend that game is over because assassin card was found
                     break
                 # if the card isn't our team color, break
-                if card.color is not game_state.currentTeam:
-                    break
+                # if card.color is not game_state.currentTeam:
+                #     break
+            if choose_assasin:
+                break
             game_state.currentGuesses = guesses
             game_state.chatHistory.append(ChatMessage(sender=Role.OPERATIVE, message=reasoning, team=game_state.currentTeam, cards=game_state.cards))
             

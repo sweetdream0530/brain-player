@@ -129,6 +129,11 @@ def add_args(cls, parser):
         help="Notes to add to the wandb run.",
         default="",
     )
+    # parser.add_argument(
+    #         "--axon.port",
+    #         type=str,
+    #         help="Port to serve the axon on.",
+    #     )
 
 
 def add_miner_args(cls, parser):
