@@ -38,13 +38,19 @@ class ChatMessage(NamedTuple):
     sender: Role
     message: str
     team: TeamColor
-    cards: list[CardType]
 
 class Clue(BaseModel):
     clueText: str
     number: int
 
+class TParticipant(BaseModel):
+    name: str
+    hotkey: str
+    team: TeamColor
+
+
 class GameState():
+    id: str = None
     cards: list[CardType]
     chatHistory: list[ChatMessage]
     currentTeam: TeamColor
@@ -56,10 +62,13 @@ class GameState():
     currentClue: Clue = None
     currentGuesses: list[str] = None
     gameWinner: TeamColor = None
-
-    def __init__(self):
+    participants: list[TParticipant] = []
+    def __init__(self, participants):
+        self.participants = participants
         self.cards = [CardType(word=word.strip(), color=color, is_revealed=False, was_recently_revealed=False) 
                       for word, color in zip(words, [CardColor.RED]*9 + [CardColor.BLUE]*8 + [CardColor.BYSTANDER]*7 + [CardColor.ASSASSIN])]
+        # Shuffle the cards
+        random.shuffle(self.cards)
         self.chatHistory = []
         self.currentTeam = TeamColor.RED
         self.currentRole = Role.SPYMASTER
