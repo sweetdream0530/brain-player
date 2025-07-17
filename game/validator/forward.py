@@ -104,12 +104,12 @@ async def forward(self):
     # * Initialize game
     game_step = 0
     game_state = GameState(participants=participants)
-
     validator_key = self.wallet.hotkey.ss58_address
     # We will use validator_key as id of the game because one validator can only play one game at a time
     # Create new room via API call
     
     # ===============🤞ROOM CREATE===================
+    roomId = None
     async with aiohttp.ClientSession() as session:
         payload = {
             "validatorKey": validator_key,
@@ -134,11 +134,12 @@ async def forward(self):
             "participants": [
                 {
                     "name": p.name,
-                    "hotkey": p.hotkey,
+                    "hotKey": p.hotkey,
                     "team": p.team.value
                 } for p in game_state.participants
             ]
         }
+        # print(payload)
         
         async with session.post('https://api.battle-llm.io/api/v1/rooms/create', 
                               json=payload) as response:
@@ -146,7 +147,9 @@ async def forward(self):
                 bt.logging.error(f"Failed to create new room: {await response.text()}")
             else:
                 bt.logging.info(f"Room created successfully: {await response.text()}")
+                roomId = json.loads(await response.text())["data"]["id"]
     # TODO: Should get id from response
+    
     # ===============GAME LOOP=======================
     while game_state.gameWinner is None:
         # Prepare the query
@@ -170,7 +173,7 @@ async def forward(self):
             resetAnimations(self, game_state.cards)
 
         bt.logging.debug(f"cards: {cards}")
-        game_id = game_state.id
+        game_id = roomId
         your_team = game_state.currentTeam
         your_role = game_state.currentRole
         remaining_red = game_state.remainingRed
@@ -208,6 +211,7 @@ async def forward(self):
             # End the game and remove from gameboard after 10 seconds
             async with aiohttp.ClientSession() as session:
                 payload = {
+                    "validatorKey": validator_key,
                     "cards": [
                         {
                             "word": card.word,
@@ -238,14 +242,14 @@ async def forward(self):
                     "participants": [
                         {
                             "name": p.name,
-                            "hotkey": p.hotkey,
+                            "hotKey": p.hotkey,
                             "team": p.team.value
                         } for p in game_state.participants
                     ],
                     # "createdAt": "2025-04-07T17:49:16.457Z"
                 }
 
-                async with session.patch(f'https://api.battle-llm.io/api/v1/rooms/{validator_key}',
+                async with session.patch(f'https://api.battle-llm.io/api/v1/rooms/{roomId}',
                                     json=payload) as response:
                     if response.status != 200:
                         bt.logging.error(f"Failed to update room state: {await response.text()}")
@@ -302,6 +306,7 @@ async def forward(self):
                     bt.logging.info(f"💀 Assassin card found! Game over. Winner: {game_state.gameWinner}")
                     async with aiohttp.ClientSession() as session:
                         payload = {
+                            "validatorKey": validator_key,
                             "cards": [
                                 {
                                     "word": card.word,
@@ -332,14 +337,14 @@ async def forward(self):
                             "participants": [
                                 {
                                     "name": p.name,
-                                    "hotkey": p.hotkey,
+                                    "hotKey": p.hotkey,
                                     "team": p.team.value
                                 } for p in game_state.participants
                             ],
                             # "createdAt": "2025-04-07T17:49:16.457Z"
                         }
 
-                        async with session.patch(f'https://api.battle-llm.io/api/v1/rooms/{validator_key}',
+                        async with session.patch(f'https://api.battle-llm.io/api/v1/rooms/{roomId}',
                                             json=payload) as response:
                             if response.status != 200:
                                 bt.logging.error(f"Failed to update room state: {await response.text()}")
@@ -379,6 +384,7 @@ async def forward(self):
 
         async with aiohttp.ClientSession() as session:
             payload = {
+                "validatorKey": validator_key,
                 "cards": [
                     {
                         "word": card.word,
@@ -409,14 +415,14 @@ async def forward(self):
                 "participants": [
                     {
                         "name": p.name,
-                        "hotkey": p.hotkey,
+                        "hotKey": p.hotkey,
                         "team": p.team.value
                     } for p in game_state.participants
                 ],
                 # "createdAt": "2025-04-07T17:49:16.457Z"
             }
 
-            async with session.patch(f'https://api.battle-llm.io/api/v1/rooms/{validator_key}',
+            async with session.patch(f'https://api.battle-llm.io/api/v1/rooms/{roomId}',
                                    json=payload) as response:
                 if response.status != 200:
                     bt.logging.error(f"Failed to update room state: {await response.text()}")
@@ -425,7 +431,7 @@ async def forward(self):
         time.sleep(2)
     # * Game over
     async with aiohttp.ClientSession() as session:
-        async with session.delete(f'https://api.battle-llm.io/api/v1/rooms/{validator_key}') as response:
+        async with session.delete(f'https://api.battle-llm.io/api/v1/rooms/{roomId}') as response:
             if response.status != 200:
                 bt.logging.error(f"Failed to delete room: {await response.text()}")
             else:
