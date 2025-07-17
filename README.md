@@ -60,13 +60,13 @@ This reward system not only motivates the miners to perform better but also prov
 ### **Getting code**
 
 ```bash
-git clone https://github.com/plebgang/bt_codenames.git
+git clone https://github.com/shiftlayer-llc/codenames.git
 ```
 
 ### Adding .env file (For OpenAI API-based miners)
 
 ```bash
-cp .env.sample .env
+cp .env.example .env
 ```
 
 ### Setting up a Virtual Environment
@@ -75,7 +75,7 @@ To ensure that your project dependencies are isolated and do not interfere with 
 
 1. **Navigate to your project directory**:
    ```bash
-   cd bt_codenames
+   cd codenames
    ```
 
 2. **Create a virtual environment**:
@@ -119,4 +119,4 @@ pip install -e .
 
 ### Running Miner
 
-`python neurons/miner.py --subtensor.network test --wallet.name test_miner --wallet.hotkey h1 --netuid 35 --logging.info`
+`python neurons/miner.py --subtensor.network test --wallet.name test_miner_0 --wallet.hotkey h0 --netuid 335 --logging.info --axon.port 10000`
