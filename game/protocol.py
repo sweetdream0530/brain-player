@@ -39,7 +39,6 @@ class GameSynapse(bt.Synapse):
     - cards: List[CardType]
     - output: GameSynapseOutput
     """
-    game_id: str = None
     your_team: str = None
     your_role: str = None
     remaining_red: int = 0

@@ -218,8 +218,6 @@ async def forward(self):
             
             # Remove animation of recently revealed cards
             resetAnimations(self, game_state.cards)
-        # TODO: game_id is needed?
-        game_id = roomId
         your_team = game_state.currentTeam
         your_role = game_state.currentRole
         remaining_red = game_state.remainingRed
@@ -228,7 +226,6 @@ async def forward(self):
         your_number = game_state.currentClue.number if game_state.currentClue is not None else None
 
         synapse = GameSynapse(
-            game_id = game_id,
             your_team=your_team,
             your_role=your_role,
             remaining_red=remaining_red,
