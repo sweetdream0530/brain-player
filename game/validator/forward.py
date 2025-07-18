@@ -208,7 +208,7 @@ async def forward(self):
             # If receiver is operative, we need to send the cards without color
             # This is because the operative doesn't know the color of the cards
             cards = [
-                CardType(word=card.word, color= None, is_revealed=card.is_revealed, was_recently_revealed=card.was_recently_revealed)
+                CardType(word=card.word, color= card.color if card.is_revealed else None, is_revealed=card.is_revealed, was_recently_revealed=card.was_recently_revealed)
                 for card in game_state.cards
             ]
             if game_state.currentTeam == TeamColor.RED:
@@ -218,8 +218,6 @@ async def forward(self):
             
             # Remove animation of recently revealed cards
             resetAnimations(self, game_state.cards)
-        # TODO: game_id is needed?
-        game_id = roomId
         your_team = game_state.currentTeam
         your_role = game_state.currentRole
         remaining_red = game_state.remainingRed
@@ -228,7 +226,6 @@ async def forward(self):
         your_number = game_state.currentClue.number if game_state.currentClue is not None else None
 
         synapse = GameSynapse(
-            game_id = game_id,
             your_team=your_team,
             your_role=your_role,
             remaining_red=remaining_red,

@@ -159,6 +159,12 @@ def add_miner_args(cls, parser):
         help="If set, miners will accept queries from non registered entities. (Dangerous!)",
         default=False,
     )
+    parser.add_argument(
+        "--blacklist.minimum_stake_requirement",
+        type=int,
+        help="Minimum amount of stake needed to send request to miners.",
+        default=1_000,
+    )
 
     parser.add_argument(
         "--wandb.project_name",

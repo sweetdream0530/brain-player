@@ -4,7 +4,7 @@ from typing import NamedTuple
 import random
 from pydantic import BaseModel
 with open("game/utils/wordlist-eng.txt") as f:
-        words = f.readlines()
+    words = f.readlines()
     # select 25 random words
 words = random.sample(words, 25)
     

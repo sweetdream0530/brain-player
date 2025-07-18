@@ -162,7 +162,7 @@ class Miner(BaseMinerNeuron):
 
         If none of the blacklist conditions are met, the request should proceed to further processing.
         """
-
+        
         if synapse.dendrite is None or synapse.dendrite.hotkey is None:
             bt.logging.warning(
                 "Received a request without a dendrite or hotkey."
@@ -176,22 +176,31 @@ class Miner(BaseMinerNeuron):
             and synapse.dendrite.hotkey not in self.metagraph.hotkeys
         ):
             # Ignore requests from un-registered entities.
-            bt.logging.trace(
+            bt.logging.debug(
                 f"Blacklisting un-registered hotkey {synapse.dendrite.hotkey}"
             )
             return True, "Unrecognized hotkey"
-
+        # Pass if owner of the subnet is the sender
+        if uid == 0:
+            bt.logging.debug(
+                f"Not Blacklisting owner hotkey {synapse.dendrite.hotkey}"
+            )
+            return False, "Owner hotkey"
         if self.config.blacklist.force_validator_permit:
             # If the config is set to force validator permit, then we should only allow requests from validators.
             if not self.metagraph.validator_permit[uid]:
-                bt.logging.warning(
+                bt.logging.debug(
                     f"Blacklisting a request from non-validator hotkey {synapse.dendrite.hotkey}"
                 )
                 return True, "Non-validator hotkey"
-
-        bt.logging.trace(
+        stake = self.metagraph.S[uid].item()
+        if stake < self.config.blacklist.minimum_stake_requirement:
+            return True, "pubkey stake below min_allowed_stake"
+        
+        bt.logging.debug(
             f"Not Blacklisting recognized hotkey {synapse.dendrite.hotkey}"
         )
+        
         return False, "Hotkey recognized!"
 
     async def priority(self, synapse: game.protocol.GameSynapse) -> float:

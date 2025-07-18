@@ -1,25 +1,17 @@
-# The MIT License (MIT)
-# Copyright © 2023 Yuma Rao
-# Copyright © 2023 plebgang
-
-# Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
-# documentation files (the “Software”), to deal in the Software without restriction, including without limitation
-# the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software,
-# and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
-
-# The above copyright notice and this permission notice shall be included in all copies or substantial portions of
-# the Software.
-
-# THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO
-# THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
-# THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
-# OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
-# DEALINGS IN THE SOFTWARE.
-
 import typing
 import bittensor as bt
-from game.utils.game import GameState, Role, TeamColor, CardColor, CardType
 from pydantic import BaseModel
+import random
+import asyncio
+with open("game/utils/wordlist-eng.txt") as f:
+    words = f.readlines()
+    # select 25 random words
+words = random.sample(words, 25)
+class CardType(BaseModel):
+    word: str
+    color: str | None
+    is_revealed: bool
+    was_recently_revealed: bool
 class GameSynapseOutput(BaseModel):
     clue_text: typing.Optional[str] = None
     number: typing.Optional[int] = None
@@ -66,4 +58,39 @@ class GameSynapse(bt.Synapse):
         GameSynapseOutput(clue_text="example", number=1)
         """
         return self.output
-    
+
+async def forward(uid: int, synapse: GameSynapse, dendrite, metagraph):
+    print(synapse)
+    responses = await dendrite(
+        # Send the query to selected miner axons in the network.
+        axons=[metagraph.axons[uid]],
+        # Construct a query.
+        synapse=synapse,
+        # All responses have the deserialize function called on them before returning.
+        # You are encouraged to define your own deserialization function.
+        deserialize=True,
+        timeout=10,
+    )
+    return responses[0] if responses else None
+
+async def main():
+    # Example usage of GameSynapse
+    subtensor = bt.subtensor(network = "test")
+    metagraph = subtensor.metagraph(netuid = 335)
+    wallet = bt.wallet(name="codenames-test-owner", hotkey = "default")
+    dendrite = bt.dendrite(wallet = wallet)
+    game_synapse = GameSynapse(
+        your_team="red",
+        your_role="spymaster",
+        remaining_red=9,
+        remaining_blue=8,
+        cards=[CardType(word=word.strip(), color=color, is_revealed=False, was_recently_revealed=False) for word, color in zip(words, ["red"]*9 + ["blue"]*8 + ["bystander"]*7 + ["assassin"])],
+        your_clue=None,
+        your_number=None
+    )
+    response = await forward(2, game_synapse, dendrite, metagraph)
+    print(response)
+    await dendrite.aclose_session()
+
+if __name__ == "__main__":
+    asyncio.run(main())
