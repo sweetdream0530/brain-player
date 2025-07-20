@@ -83,7 +83,7 @@ async def create_room(validator_key, game_state: GameState):
             ]
         }
         
-        async with session.post('https://api.battle-llm.io/api/v1/rooms/create', 
+        async with session.post('https://api.shiftlayer.ai/api/v1/rooms/create', 
                               json=payload) as response:
             if response.status != 200:
                 bt.logging.error(f"Failed to create new room: {await response.text()}")
@@ -132,7 +132,7 @@ async def update_room(validator_key, game_state: GameState, roomId):
             # "createdAt": "2025-04-07T17:49:16.457Z"
         }
 
-        async with session.patch(f'https://api.battle-llm.io/api/v1/rooms/{roomId}',
+        async with session.patch(f'https://api.shiftlayer.ai/api/v1/rooms/{roomId}',
                             json=payload) as response:
             if response.status != 200:
                 bt.logging.error(f"Failed to update room state: {await response.text()}")
@@ -140,7 +140,7 @@ async def update_room(validator_key, game_state: GameState, roomId):
                 bt.logging.info("Room state updated successfully")
 async def remove_room(validator_key, roomId):
     async with aiohttp.ClientSession() as session:
-        async with session.delete(f'https://api.battle-llm.io/api/v1/rooms/{roomId}') as response:
+        async with session.delete(f'https://api.shiftlayer.ai/api/v1/rooms/{roomId}') as response:
             if response.status != 200:
                 bt.logging.error(f"Failed to delete room: {await response.text()}")
             else:
@@ -256,7 +256,7 @@ async def forward(self):
             break
 
         if game_state.currentRole == Role.SPYMASTER:
-            # * Get the clue and number from the responsehttps://game.battle-llm.io/
+            # * Get the clue and number from the responsehttps://game.shiftlayer.ai/
             clue = responses[0].clue_text
             number = responses[0].number
             reasoning = responses[0].reasoning
