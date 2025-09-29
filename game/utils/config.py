@@ -176,7 +176,7 @@ def add_miner_args(cls, parser):
     parser.add_argument(
         "--wandb.entity",
         type=str,
-        default="opentensor-dev",
+        default="shiftlayer-brainplay",
         help="Wandb entity to log to.",
     )
 
@@ -254,7 +254,7 @@ def add_validator_args(cls, parser):
         "--wandb.entity",
         type=str,
         help="The name of the project where you are sending the new run.",
-        default="opentensor-dev",
+        default="shiftlayer-brainplay",
     )
 
 
