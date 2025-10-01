@@ -19,6 +19,7 @@
 
 
 import copy
+import os
 import time
 import numpy as np
 import asyncio
@@ -36,6 +37,11 @@ from game.base.utils.weight_utils import (
 )  # TODO: Replace when bittensor switches to numpy
 from game.mock import MockDendrite
 from game.utils.config import add_validator_args
+from game.validator.score_store import ScoreStore
+from game.validator.scoring_config import (
+    parse_interval_to_seconds,
+    SCORING_INTERVAL,
+)
 
 
 class BaseValidatorNeuron(BaseNeuron):
@@ -66,6 +72,18 @@ class BaseValidatorNeuron(BaseNeuron):
         # Set up initial scoring weights for validation
         bt.logging.info("Building validation weights.")
         self.scores = np.zeros(self.metagraph.n, dtype=np.float32)
+
+        scores_db_path = os.path.join(self.config.neuron.full_path, "scores.db")
+        self.score_store = ScoreStore(scores_db_path)
+        self.score_store.init()
+        scoring_interval_text = SCORING_INTERVAL
+        if hasattr(self.config, "scoring") and getattr(
+            self.config.scoring, "interval", None
+        ):
+            scoring_interval_text = self.config.scoring.interval
+        self.scoring_window_seconds = parse_interval_to_seconds(
+            scoring_interval_text
+        )
 
         # Init sync with the network. Updates the metagraph.
         self.sync()
@@ -197,6 +215,8 @@ class BaseValidatorNeuron(BaseNeuron):
             self.thread.join(5)
             self.is_running = False
             bt.logging.debug("Stopped")
+        if hasattr(self, "score_store"):
+            self.score_store.close()
 
     def __enter__(self):
         self.run_in_background_thread()
@@ -226,6 +246,23 @@ class BaseValidatorNeuron(BaseNeuron):
         """
         Sets the validator weights to the metagraph hotkeys based on the scores it has received from the miners. The weights determine the trust and incentive level the validator assigns to miner nodes on the network.
         """
+
+        if hasattr(self, "score_store"):
+            window_seconds = getattr(
+                self, "scoring_window_seconds", parse_interval_to_seconds("3 days")
+            )
+            since_ts = time.time() - window_seconds
+            hotkey_totals = self.score_store.window_scores_by_hotkey(since_ts)
+            window_scores = np.zeros(self.metagraph.n, dtype=np.float32)
+            for uid, hotkey in enumerate(self.metagraph.hotkeys):
+                window_scores[uid] = float(hotkey_totals.get(hotkey, 0.0))
+            total_weight = float(np.abs(window_scores).sum())
+            if total_weight <= 0:
+                bt.logging.warning(
+                    "No windowed scores available for weight setting; skipping set_weights."
+                )
+                return
+            self.scores = window_scores
 
         # Check if self.scores contains any NaN values and log a warning if it does.
         if np.isnan(self.scores).any():

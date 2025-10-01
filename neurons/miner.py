@@ -23,11 +23,11 @@ import ast
 import bittensor as bt
 import os
 from dotenv import load_dotenv
+import game
 from game.utils.spySysPrompt import spySysPrompt
 from game.utils.opSysPrompt import opSysPrompt
 # Bittensor Miner Template:
-import game
-from game.protocol import GameSynapseOutput
+from game.protocol import GameSynapse, GameSynapseOutput, PingSynapse
 import openai
 # import base miner class which takes care of most of the boilerplate
 from game.base.miner import BaseMinerNeuron
@@ -45,6 +45,24 @@ class Miner(BaseMinerNeuron):
 
     def __init__(self, config=None):
         super(Miner, self).__init__(config=config)
+        self.axon.attach(
+            forward_fn=self.pong,
+            blacklist_fn=self.blacklist_ping,
+        )
+
+    async def pong(self, synapse: PingSynapse) -> PingSynapse:
+        """
+        Responds to a PingSynapse with a Pong response, indicating the miner's availability.
+
+        Args:
+            synapse (PingSynapse): The incoming ping synapse from a validator.
+
+        Returns:
+            PingSynapse: The response synapse with the is_available field set to True.
+        """
+        bt.logging.info("💌 Received PingSynapse request")
+        synapse.is_available = True
+        return synapse
 
     async def forward(
         self, synapse: game.protocol.GameSynapse
@@ -62,8 +80,24 @@ class Miner(BaseMinerNeuron):
         The 'forward' function is a template and should be tailored to fit the miner's specific operational needs.
         This method illustrates a basic framework for processing game-related data.
         """
-        bt.logging.info(f"💌 Received synapse")
+
+        bt.logging.info("💌 Received GameSynapse request")
         
+        # Build board and clue strings outside the f-string to avoid backslash-in-expression errors.
+        if synapse.your_role == 'operative':
+            board = [
+                {
+                    "word": card.word,
+                    "isRevealed": card.is_revealed,
+                    "color": card.color if card.is_revealed else None,
+                }
+                for card in synapse.cards
+            ]
+            clue_block = f"Your Clue: {synapse.your_clue}\nNumber: {synapse.your_number}"
+        else:
+            board = synapse.cards
+            clue_block = ""
+
         userPrompt = f"""
         ### Current Game State
         Your Team: {synapse.your_team}
@@ -71,17 +105,9 @@ class Miner(BaseMinerNeuron):
         Red Cards Left to Guess: {synapse.remaining_red}
         Blue Cards Left to Guess: {synapse.remaining_blue}
 
-        Board: {[
-            {
-                "word": card.word,
-                "isRevealed": card.is_revealed,
-                "color": card.color if card.is_revealed else None
-            } for card in synapse.cards
-        ] if synapse.your_role == 'operative' else synapse.cards}
+        Board: {board}
 
-        {f"Your Clue: {synapse.your_clue}\nNumber: {synapse.your_number}" if synapse.your_role == 'operative' else ''}
-        """
-        
+        {clue_block}"""
         messages: typing.List(typing.Dict) = []
         messages.append({
             'role': 'system',
@@ -131,8 +157,8 @@ class Miner(BaseMinerNeuron):
 
         return synapse
 
-    async def blacklist(
-        self, synapse: game.protocol.GameSynapse
+    async def _blacklist(
+        self, synapse: bt.Synapse
     ) -> typing.Tuple[bool, str]:
         """
         Evaluates whether an incoming request should be blacklisted and ignored based on predefined security criteria.
@@ -203,6 +229,16 @@ class Miner(BaseMinerNeuron):
         )
         
         return False, "Hotkey recognized!"
+
+    async def blacklist(
+            self, synapse: game.protocol.GameSynapse
+    ) -> typing.Tuple[bool, str]:
+        return await self._blacklist(synapse)
+
+    async def blacklist_ping(
+            self, synapse: PingSynapse
+    ) -> typing.Tuple[bool, str]:
+        return await self._blacklist(synapse)
 
     async def priority(self, synapse: game.protocol.GameSynapse) -> float:
         """

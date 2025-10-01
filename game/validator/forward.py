@@ -17,16 +17,25 @@
 # DEALINGS IN THE SOFTWARE.
 
 import time
+import uuid
 import bittensor as bt
 import aiohttp
 import json
 from game.protocol import GameSynapse
+from game.utils.ruleSysPrompt import ruleSysPrompt
 from game.validator.reward import get_rewards
 from game.utils.uids import get_random_uids
 import random
 import typing
 from game.utils.game import TParticipant
 from game.utils.game import GameState, Role, TeamColor, CardColor, CardType, Clue, ChatMessage
+from openai import OpenAI
+import os
+from dotenv import load_dotenv
+
+load_dotenv()  # take environment variables from .env.
+
+client = OpenAI(api_key=os.environ.get('OPENAI_KEY'))
 
 def organize_team(self, uids):
     """
@@ -78,12 +87,13 @@ async def create_room(validator_key, game_state: GameState):
                 {
                     "name": p.name,
                     "hotKey": p.hotkey,
-                    "team": p.team.value
+                    "team": p.team.value,
+                    "role": p.role.value
                 } for p in game_state.participants
             ]
         }
         
-        async with session.post('https://api.shiftlayer.ai/api/v1/rooms/create', 
+        async with session.post('https://backend.shiftlayer.ai/api/v1/rooms/create', 
                               json=payload) as response:
             if response.status != 200:
                 bt.logging.error(f"Failed to create new room: {await response.text()}")
@@ -108,6 +118,10 @@ async def update_room(validator_key, game_state: GameState, roomId):
                     "sender": msg.sender.value,
                     "message": msg.message,
                     "team": msg.team.value,
+                    "reasoning": msg.reasoning,
+                    "clueText": msg.clueText,
+                    "number": msg.number,
+                    "guesses": msg.guesses,
                 } for msg in game_state.chatHistory
             ],
             "currentTeam": game_state.currentTeam.value,
@@ -126,21 +140,25 @@ async def update_room(validator_key, game_state: GameState, roomId):
                 {
                     "name": p.name,
                     "hotKey": p.hotkey,
-                    "team": p.team.value
+                    "team": p.team.value,
+                    "role": p.role.value
                 } for p in game_state.participants
             ],
             # "createdAt": "2025-04-07T17:49:16.457Z"
         }
 
-        async with session.patch(f'https://api.shiftlayer.ai/api/v1/rooms/{roomId}',
+        async with session.patch(f'https://backend.shiftlayer.ai/api/v1/rooms/{roomId}',
                             json=payload) as response:
             if response.status != 200:
                 bt.logging.error(f"Failed to update room state: {await response.text()}")
             else:
                 bt.logging.info("Room state updated successfully")
+                print(await response.json())
+
 async def remove_room(validator_key, roomId):
+    # return
     async with aiohttp.ClientSession() as session:
-        async with session.delete(f'https://api.shiftlayer.ai/api/v1/rooms/{roomId}') as response:
+        async with session.delete(f'https://backend.shiftlayer.ai/api/v1/rooms/{roomId}') as response:
             if response.status != 200:
                 bt.logging.error(f"Failed to delete room: {await response.text()}")
             else:
@@ -157,7 +175,8 @@ async def forward(self):
 
     """
     # Select 4 miners randomly and organize 2 teams
-    miner_uids = get_random_uids(self, k=self.config.neuron.sample_size)
+    miner_uids = await get_random_uids(self, k=self.config.neuron.sample_size)
+    miner_uids = list(miner_uids)
     # Exeption handling when number of miners less than 4
     if len(miner_uids) < 4:
         return
@@ -166,6 +185,15 @@ async def forward(self):
     bt.logging.info(f"\033[91mRed Team: {red_team}\033[0m")
     bt.logging.info(f"\033[94mBlue Team: {blue_team}\033[0m")
 
+    rs_uid = red_team["spymaster"]
+    ro_uid = red_team["operative"]
+    bs_uid = blue_team["spymaster"]
+    bo_uid = blue_team["operative"]
+
+    rs_hotkey = self.metagraph.axons[rs_uid].hotkey
+    ro_hotkey = self.metagraph.axons[ro_uid].hotkey
+    bs_hotkey = self.metagraph.axons[bs_uid].hotkey
+    bo_hotkey = self.metagraph.axons[bo_uid].hotkey
 
     participants : typing.List[TParticipant] = []
     for team in [red_team, blue_team]:
@@ -174,6 +202,7 @@ async def forward(self):
                 name = "Miner " + str(team["spymaster"]),
                 hotkey = self.metagraph.axons[team["spymaster"]].hotkey,
                 team = TeamColor.RED if team == red_team else TeamColor.BLUE,
+                role = Role.SPYMASTER
             )
         )
         participants.append(
@@ -181,12 +210,17 @@ async def forward(self):
                 name = "Miner " + str(team["operative"]),
                 hotkey = self.metagraph.axons[team["operative"]].hotkey,
                 team = TeamColor.RED if team == red_team else TeamColor.BLUE,
+                role = Role.OPERATIVE
             )
         )    
-        
+    
     # * Initialize game
     game_step = 0
+    started_at = time.time()
+    game_id = f"{int(started_at)}-{uuid.uuid4().hex[:8]}"
     game_state = GameState(participants=participants)
+    game_state.id = game_id
+    end_reason = "completed"
     validator_key = self.wallet.hotkey.ss58_address
     # Create new room via API call
     
@@ -250,6 +284,7 @@ async def forward(self):
         if len(responses) == 0 or responses[0] is None:
             game_state.gameWinner = TeamColor.RED if game_state.currentTeam == TeamColor.BLUE else TeamColor.BLUE
             resetAnimations(self, game_state.cards)
+            end_reason = "no_response"
             bt.logging.info(f"💀 No response received! Game over. Winner: {game_state.gameWinner}")
             # End the game and remove from gameboard after 10 seconds
             await update_room(validator_key, game_state, roomId)
@@ -263,7 +298,45 @@ async def forward(self):
             game_state.currentClue = Clue(clueText=clue, number=number)
             bt.logging.info(f"Clue: {clue}, Number: {number}")
             bt.logging.info(f"Reasoning: {reasoning}")
-            game_state.chatHistory.append(ChatMessage(sender=Role.SPYMASTER, message=reasoning, team=game_state.currentTeam))
+
+            # * Check if the clue is valid using the ruleSysPrompt
+            board_words = [card.word for card in game_state.cards if not card.is_revealed]
+            messages = []
+            messages.append({
+                'role': 'system',
+                'content': ruleSysPrompt
+            })
+            messages.append({
+                'role': 'user',
+                'content': f"Clue: {clue}, Number: {number}, Board Words: {board_words}"
+            })
+
+            result = client.responses.create(
+                model="gpt-5",
+                input=messages,
+                reasoning={"effort": "low"}, # Optional: control reasoning effort
+            )
+            bt.logging.info(f"OpenAI response: {result}")
+            result_json = json.loads(result.output_text)
+            if result_json["valid"] == False:
+                bt.logging.info(f"❌ Invalid clue '{clue}' provided by miner {to_uid} for board words {board_words}. Reason: {result_json['reason']}")
+                # If the clue is invalid, the other team wins
+                game_state.gameWinner = TeamColor.RED if game_state.currentTeam == TeamColor.BLUE else TeamColor.BLUE
+                resetAnimations(self, game_state.cards)
+                end_reason = "invalid_clue"
+                bt.logging.info(f"💀 Invalid clue! Game over. Winner: {game_state.gameWinner}")
+                await update_room(validator_key, game_state, roomId)
+                # time.sleep(5)
+                break
+
+            game_state.chatHistory.append(ChatMessage(
+                sender=Role.SPYMASTER, 
+                message=f"Gave clue '{clue}' with number {number}", 
+                team=game_state.currentTeam,
+                clueText=clue,
+                number=number,
+                reasoning=reasoning,
+            ))
             game_state.currentClue.clueText = clue
             game_state.currentClue.number = number
 
@@ -290,17 +363,20 @@ async def forward(self):
                 if game_state.remainingRed == 0:
                     game_state.gameWinner = TeamColor.RED
                     resetAnimations(self, game_state.cards)
+                    end_reason = "red_all_cards"
                     bt.logging.info(f"🎉 All red cards found! Winner: {game_state.gameWinner}")
                     break
                 elif game_state.remainingBlue == 0:
                     game_state.gameWinner = TeamColor.BLUE
                     resetAnimations(self, game_state.cards)
+                    end_reason = "blue_all_cards"
                     bt.logging.info(f"🎉 All blue cards found! Winner: {game_state.gameWinner}")
                     break
                 if card.color == "assassin":
                     choose_assasin = True
                     game_state.gameWinner = TeamColor.RED if game_state.currentTeam == TeamColor.BLUE else TeamColor.BLUE
                     resetAnimations(self, game_state.cards)
+                    end_reason = "assassin"
                     bt.logging.info(f"💀 Assassin card found! Game over. Winner: {game_state.gameWinner}")
                     await update_room(validator_key, game_state, roomId)
                     # time.sleep(5)
@@ -316,7 +392,13 @@ async def forward(self):
             if choose_assasin or game_state.gameWinner is not None:
                 break
             game_state.currentGuesses = guesses
-            game_state.chatHistory.append(ChatMessage(sender=Role.OPERATIVE, message=reasoning, team=game_state.currentTeam))
+            game_state.chatHistory.append(ChatMessage(
+                sender=Role.OPERATIVE, 
+                message=f"Guessed cards: {', '.join(guesses)}",
+                team=game_state.currentTeam,
+                reasoning=reasoning,
+                guesses=guesses
+            ))
 
         
         # change the role
@@ -339,12 +421,45 @@ async def forward(self):
         await update_room(validator_key, game_state, roomId)
         time.sleep(2)
     # * Game over
-    await remove_room(validator_key, roomId)
+    ended_at = time.time()
+    winner_value = (
+        game_state.gameWinner.value if game_state.gameWinner is not None else None
+    )
+    await update_room(validator_key, game_state, roomId)
+    # await remove_room(validator_key, roomId)
     # # Adjust the scores based on responses from miners.
     rewards = get_rewards(self, winner = game_state.gameWinner, red_team = red_team, blue_team = blue_team)
 
     bt.logging.info(f"Scored responses: {rewards}")
     # Update the scores based on the rewards. You may want to define your own update_scores function for custom behavior.
     self.update_scores(rewards, miner_uids)
+
+    rewards_list = (
+        rewards.tolist() if hasattr(rewards, "tolist") else list(rewards)
+    )
+    def _score_at(index: int) -> float:
+        return float(rewards_list[index]) if index < len(rewards_list) else 0.0
+
+    try:
+        self.score_store.record_game(
+            game_id=game_id,
+            rs=rs_hotkey,
+            ro=ro_hotkey,
+            bs=bs_hotkey,
+            bo=bo_hotkey,
+            winner=winner_value,
+            started_at=started_at,
+            ended_at=ended_at,
+            score_rs=_score_at(0),
+            score_ro=_score_at(1),
+            score_bs=_score_at(2),
+            score_bo=_score_at(3),
+            reason=end_reason,
+        )
+        synced = await self.score_store.sync_pending(validator_key)
+        if synced:
+            bt.logging.info(f"Synced {synced} score rows with backend.")
+    except Exception as err:  # noqa: BLE001
+        bt.logging.error(f"Failed to persist game score {game_id}: {err}")
 
     time.sleep(30)

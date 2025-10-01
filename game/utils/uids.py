@@ -1,5 +1,6 @@
 import random
 import bittensor as bt
+from game.api.get_query_axons import ping_uids
 import numpy as np
 from typing import List
 
@@ -28,7 +29,7 @@ def check_uid_availability(
     return True
 
 
-def get_random_uids(self, k: int, exclude: List[int] = None) -> np.ndarray:
+async def get_random_uids(self, k: int, exclude: List[int] = None) -> np.ndarray:
     """Returns k available random uids from the metagraph.
     Args:
         k (int): Number of uids to return.
@@ -40,11 +41,12 @@ def get_random_uids(self, k: int, exclude: List[int] = None) -> np.ndarray:
     """
     candidate_uids = []
     avail_uids = []
-    for uid in range(self.metagraph.n.item()):
+    successful_uids, failed_uids = await ping_uids(self.dendrite, self.metagraph, self.metagraph.uids, 3)
+    print(f"successful_uids: {successful_uids}, failed_uids: {failed_uids}")
+    for uid in successful_uids:
         uid_is_available = check_uid_availability(
             self.metagraph, uid, self.config.neuron.vpermit_tao_limit
         )
-        print(f"uid_is_available: {uid_is_available}")
         uid_is_not_excluded = exclude is None or uid not in exclude
 
         if uid_is_available:

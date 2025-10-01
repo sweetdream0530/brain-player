@@ -16,12 +16,14 @@
 # THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 # OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.
+import traceback
+import game
 import numpy as np
 import random
 import bittensor as bt
 
 
-async def ping_uids(dendrite, metagraph, uids, timeout=3):
+async def ping_uids(dendrite: bt.dendrite, metagraph, uids, timeout=3):
     """
     Pings a list of UIDs to check their availability on the Bittensor network.
 
@@ -38,11 +40,11 @@ async def ping_uids(dendrite, metagraph, uids, timeout=3):
     """
     axons = [metagraph.axons[uid] for uid in uids]
     try:
-        responses = await dendrite(
+        responses = await dendrite.forward(
             axons,
-            bt.Synapse(),  # TODO: potentially get the synapses available back?
-            deserialize=False,
+            game.protocol.PingSynapse(),
             timeout=timeout,
+            deserialize=False,
         )
         successful_uids = [
             uid
@@ -56,6 +58,7 @@ async def ping_uids(dendrite, metagraph, uids, timeout=3):
         ]
     except Exception as e:
         bt.logging.error(f"Dendrite ping failed: {e}")
+        traceback.print_exc()
         successful_uids = []
         failed_uids = uids
     bt.logging.debug(f"ping() successful uids: {successful_uids}")

@@ -21,6 +21,7 @@ import subprocess
 import argparse
 import bittensor as bt
 from .logging import setup_events_logger
+from game.validator.scoring_config import SCORING_INTERVAL
 
 
 def is_cuda_available():
@@ -224,6 +225,13 @@ def add_validator_args(cls, parser):
         type=float,
         help="Moving average alpha parameter, how much to add of the new observation.",
         default=0.1,
+    )
+
+    parser.add_argument(
+        "--scoring.interval",
+        type=str,
+        default=SCORING_INTERVAL,
+        help="Rolling window to sum validator scores when setting weights (e.g. '3 days').",
     )
 
     parser.add_argument(

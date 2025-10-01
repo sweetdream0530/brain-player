@@ -38,6 +38,10 @@ class ChatMessage(NamedTuple):
     sender: Role
     message: str
     team: TeamColor
+    clueText: str | None = None
+    number: int | None = None
+    guesses: list[str] | None = None
+    reasoning: str | None = None
 
 class Clue(BaseModel):
     clueText: str
@@ -47,6 +51,7 @@ class TParticipant(BaseModel):
     name: str
     hotkey: str
     team: TeamColor
+    role: Role
 
 
 class GameState():

@@ -19,7 +19,13 @@
 import typing
 import bittensor as bt
 from game.utils.game import GameState, Role, TeamColor, CardColor, CardType
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+
+class PingSynapse(bt.Synapse):
+    """Lightweight ping used by validators to discover available miners."""
+    is_available: bool = False
+
 class GameSynapseOutput(BaseModel):
     clue_text: typing.Optional[str] = None
     number: typing.Optional[int] = None
