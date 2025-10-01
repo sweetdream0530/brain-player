@@ -62,6 +62,7 @@ def resetAnimations(self, cards):
     for card in cards:
         card.was_recently_revealed = False
 async def create_room(self, game_state: GameState):
+    endpoint = f"{self.backend_base}/api/v1/rooms/create"
     async with aiohttp.ClientSession() as session:
         payload = {
             "validatorKey": self.wallet.hotkey.ss58_address,
@@ -93,8 +94,7 @@ async def create_room(self, game_state: GameState):
             ]
         }
         headers = self.build_signed_headers(payload)
-        async with session.post('https://backend.shiftlayer.ai/api/v1/rooms/create', 
-                              json=payload, headers=headers) as response:
+        async with session.post(endpoint, json=payload, headers=headers) as response:
             if response.status != 200:
                 bt.logging.error(f"Failed to create new room: {await response.text()}")
                 return None
@@ -102,6 +102,7 @@ async def create_room(self, game_state: GameState):
                 bt.logging.info(f"Room created successfully: {await response.text()}")
                 return json.loads(await response.text())["data"]["id"]
 async def update_room(self, game_state: GameState, roomId):
+    endpoint = f"{self.backend_base}/api/v1/rooms/{roomId}"
     async with aiohttp.ClientSession() as session:
         payload = {
             "validatorKey": self.wallet.hotkey.ss58_address,
@@ -147,8 +148,7 @@ async def update_room(self, game_state: GameState, roomId):
             # "createdAt": "2025-04-07T17:49:16.457Z"
         }
         headers = self.build_signed_headers(payload)
-        async with session.patch(f'https://backend.shiftlayer.ai/api/v1/rooms/{roomId}',
-                            json=payload, headers=headers) as response:
+        async with session.patch(endpoint, json=payload, headers=headers) as response:
             if response.status != 200:
                 bt.logging.error(f"Failed to update room state: {await response.text()}")
             else:
@@ -157,6 +157,7 @@ async def update_room(self, game_state: GameState, roomId):
 
 async def remove_room(self, roomId):
     # return
+    endpoint = f"{self.backend_base}/api/v1/rooms/{roomId}"
     async with aiohttp.ClientSession() as session:
         payload = {
             "validatorKey": self.wallet.hotkey.ss58_address,
@@ -165,8 +166,7 @@ async def remove_room(self, roomId):
         }
         headers = self.build_signed_headers(payload)
         async with session.delete(
-            f'https://backend.shiftlayer.ai/api/v1/rooms/{roomId}',
-            headers=headers,
+            endpoint, headers=headers
         ) as response:
             if response.status != 200:
                 bt.logging.error(f"Failed to delete room: {await response.text()}")

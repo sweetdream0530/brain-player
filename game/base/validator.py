@@ -76,7 +76,15 @@ class BaseValidatorNeuron(BaseNeuron):
         self.scores = np.zeros(self.metagraph.n, dtype=np.float32)
 
         scores_db_path = os.path.join(self.config.neuron.full_path, "scores.db")
-        self.score_store = ScoreStore(scores_db_path)
+        self.backend_base = "https://backend.shiftlayer.ai"
+        try:
+            if getattr(self.config.subtensor, "network", None) == "test":
+                self.backend_base = "https://dev-backend.shiftlayer.ai"
+        except AttributeError:
+            pass
+        bt.logging.info(f"Using backend: {self.backend_base}")
+        scores_endpoint = f"{self.backend_base}/api/v1/scores"
+        self.score_store = ScoreStore(scores_db_path, backend_url=scores_endpoint)
         self.score_store.init()
         scoring_interval_text = SCORING_INTERVAL
         if hasattr(self.config, "scoring") and getattr(

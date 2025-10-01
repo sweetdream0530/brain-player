@@ -10,19 +10,12 @@ from typing import Dict, Iterable, Optional
 import aiohttp
 import bittensor as bt
 
-
-DEFAULT_BACKEND_URL = os.environ.get(
-    "CODENAMES_SCORES_API",
-    "https://backend.shiftlayer.ai/api/v1/scores",
-)
-
-
 class ScoreStore:
     """SQLite-backed store for finished game snapshots and backend synchronisation."""
 
-    def __init__(self, db_path: str, backend_url: str | None = None):
+    def __init__(self, db_path: str, backend_url: str):
         self.db_path = db_path
-        self.backend_url = (backend_url or DEFAULT_BACKEND_URL).rstrip("/")
+        self.backend_url = backend_url
         folder = os.path.dirname(db_path)
         if folder:
             os.makedirs(folder, exist_ok=True)
