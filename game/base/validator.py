@@ -21,10 +21,12 @@
 import copy
 import os
 import time
+import json
 import numpy as np
 import asyncio
 import argparse
 import threading
+from datetime import datetime, timezone
 import bittensor as bt
 
 from typing import List, Union
@@ -217,6 +219,15 @@ class BaseValidatorNeuron(BaseNeuron):
             bt.logging.debug("Stopped")
         if hasattr(self, "score_store"):
             self.score_store.close()
+
+    def build_signed_headers(self, payload: dict) -> dict:
+        message_body = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+        message = f"<Bytes>{message_body}</Bytes>"
+        signature = self.wallet.hotkey.sign(message)
+        return {
+            "X-Validator-Hotkey": self.wallet.hotkey.ss58_address,
+            "X-Validator-Signature": signature.hex(),
+        }
 
     def __enter__(self):
         self.run_in_background_thread()

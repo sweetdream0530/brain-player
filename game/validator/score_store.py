@@ -191,7 +191,7 @@ class ScoreStore:
             )
             cur.close()
 
-    async def sync_pending(self, validator_key: str) -> int:
+    async def sync_pending(self, validator_key: str, signer=None) -> int:
         """Pushes unsynced rows to the backend API.
 
         Returns the number of rows marked as synced.
@@ -236,8 +236,14 @@ class ScoreStore:
                         },
                     },
                 }
+                headers = signer(payload) if callable(signer) else None
                 try:
-                    async with session.post(self.backend_url, json=payload, timeout=10) as resp:
+                    async with session.post(
+                        self.backend_url,
+                        json=payload,
+                        headers=headers,
+                        timeout=10,
+                    ) as resp:
                         if resp.status in (200, 201, 202, 204):
                             self.mark_synced(row["game_id"])
                             synced += 1

@@ -61,10 +61,10 @@ def resetAnimations(self, cards):
     """
     for card in cards:
         card.was_recently_revealed = False
-async def create_room(validator_key, game_state: GameState):
+async def create_room(self, game_state: GameState):
     async with aiohttp.ClientSession() as session:
         payload = {
-            "validatorKey": validator_key,
+            "validatorKey": self.wallet.hotkey.ss58_address,
             "cards": [
                 {
                     "word": card.word,
@@ -92,19 +92,19 @@ async def create_room(validator_key, game_state: GameState):
                 } for p in game_state.participants
             ]
         }
-        
+        headers = self.build_signed_headers(payload)
         async with session.post('https://backend.shiftlayer.ai/api/v1/rooms/create', 
-                              json=payload) as response:
+                              json=payload, headers=headers) as response:
             if response.status != 200:
                 bt.logging.error(f"Failed to create new room: {await response.text()}")
                 return None
             else:
                 bt.logging.info(f"Room created successfully: {await response.text()}")
                 return json.loads(await response.text())["data"]["id"]
-async def update_room(validator_key, game_state: GameState, roomId):
+async def update_room(self, game_state: GameState, roomId):
     async with aiohttp.ClientSession() as session:
         payload = {
-            "validatorKey": validator_key,
+            "validatorKey": self.wallet.hotkey.ss58_address,
             "cards": [
                 {
                     "word": card.word,
@@ -146,19 +146,28 @@ async def update_room(validator_key, game_state: GameState, roomId):
             ],
             # "createdAt": "2025-04-07T17:49:16.457Z"
         }
-
+        headers = self.build_signed_headers(payload)
         async with session.patch(f'https://backend.shiftlayer.ai/api/v1/rooms/{roomId}',
-                            json=payload) as response:
+                            json=payload, headers=headers) as response:
             if response.status != 200:
                 bt.logging.error(f"Failed to update room state: {await response.text()}")
             else:
                 bt.logging.info("Room state updated successfully")
                 print(await response.json())
 
-async def remove_room(validator_key, roomId):
+async def remove_room(self, roomId):
     # return
     async with aiohttp.ClientSession() as session:
-        async with session.delete(f'https://backend.shiftlayer.ai/api/v1/rooms/{roomId}') as response:
+        payload = {
+            "validatorKey": self.wallet.hotkey.ss58_address,
+            "roomId": roomId,
+            "action": "delete_room",
+        }
+        headers = self.build_signed_headers(payload)
+        async with session.delete(
+            f'https://backend.shiftlayer.ai/api/v1/rooms/{roomId}',
+            headers=headers,
+        ) as response:
             if response.status != 200:
                 bt.logging.error(f"Failed to delete room: {await response.text()}")
             else:
@@ -225,7 +234,7 @@ async def forward(self):
     # Create new room via API call
     
     # ===============🤞ROOM CREATE===================
-    roomId = await create_room(validator_key, game_state)
+    roomId = await create_room(self, game_state)
     if roomId is None:
         bt.logging.error("Failed to create room, exiting.")
         return
@@ -287,7 +296,7 @@ async def forward(self):
             end_reason = "no_response"
             bt.logging.info(f"💀 No response received! Game over. Winner: {game_state.gameWinner}")
             # End the game and remove from gameboard after 10 seconds
-            await update_room(validator_key, game_state, roomId)
+            await update_room(self, game_state, roomId)
             break
 
         if game_state.currentRole == Role.SPYMASTER:
@@ -325,7 +334,7 @@ async def forward(self):
                 resetAnimations(self, game_state.cards)
                 end_reason = "invalid_clue"
                 bt.logging.info(f"💀 Invalid clue! Game over. Winner: {game_state.gameWinner}")
-                await update_room(validator_key, game_state, roomId)
+                await update_room(self, game_state, roomId)
                 # time.sleep(5)
                 break
 
@@ -378,7 +387,7 @@ async def forward(self):
                     resetAnimations(self, game_state.cards)
                     end_reason = "assassin"
                     bt.logging.info(f"💀 Assassin card found! Game over. Winner: {game_state.gameWinner}")
-                    await update_room(validator_key, game_state, roomId)
+                    await update_room(self, game_state, roomId)
                     # time.sleep(5)
                     break
                 if card.color != game_state.currentTeam.value:
@@ -418,14 +427,14 @@ async def forward(self):
                 game_state.currentTeam = TeamColor.RED
         game_step += 1
 
-        await update_room(validator_key, game_state, roomId)
+        await update_room(self, game_state, roomId)
         time.sleep(2)
     # * Game over
     ended_at = time.time()
     winner_value = (
         game_state.gameWinner.value if game_state.gameWinner is not None else None
     )
-    await update_room(validator_key, game_state, roomId)
+    await update_room(self, game_state, roomId)
     # await remove_room(validator_key, roomId)
     # # Adjust the scores based on responses from miners.
     rewards = get_rewards(self, winner = game_state.gameWinner, red_team = red_team, blue_team = blue_team)
@@ -456,7 +465,9 @@ async def forward(self):
             score_bo=_score_at(3),
             reason=end_reason,
         )
-        synced = await self.score_store.sync_pending(validator_key)
+        synced = await self.score_store.sync_pending(
+            validator_key, self.build_signed_headers
+        )
         if synced:
             bt.logging.info(f"Synced {synced} score rows with backend.")
     except Exception as err:  # noqa: BLE001
