@@ -437,7 +437,7 @@ async def forward(self):
     await update_room(self, game_state, roomId)
     # await remove_room(validator_key, roomId)
     # # Adjust the scores based on responses from miners.
-    rewards = get_rewards(self, winner = game_state.gameWinner, red_team = red_team, blue_team = blue_team)
+    rewards = get_rewards(self, winner = game_state.gameWinner, red_team = red_team, blue_team = blue_team, end_reason = end_reason)
 
     bt.logging.info(f"Scored responses: {rewards}")
     # Update the scores based on the rewards. You may want to define your own update_scores function for custom behavior.
