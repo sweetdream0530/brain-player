@@ -153,7 +153,6 @@ async def update_room(self, game_state: GameState, roomId):
                 bt.logging.error(f"Failed to update room state: {await response.text()}")
             else:
                 bt.logging.info("Room state updated successfully")
-                print(await response.json())
 
 async def remove_room(self, roomId):
     # return
@@ -370,12 +369,14 @@ async def forward(self):
                     resetAnimations(self, game_state.cards)
                     end_reason = "red_all_cards"
                     bt.logging.info(f"🎉 All red cards found! Winner: {game_state.gameWinner}")
+                    await update_room(self, game_state, roomId)
                     break
                 elif game_state.remainingBlue == 0:
                     game_state.gameWinner = TeamColor.BLUE
                     resetAnimations(self, game_state.cards)
                     end_reason = "blue_all_cards"
                     bt.logging.info(f"🎉 All blue cards found! Winner: {game_state.gameWinner}")
+                    await update_room(self, game_state, roomId)
                     break
                 if card.color == "assassin":
                     choose_assasin = True
@@ -430,8 +431,6 @@ async def forward(self):
     winner_value = (
         game_state.gameWinner.value if game_state.gameWinner is not None else None
     )
-    await update_room(self, game_state, roomId)
-    # await remove_room(validator_key, roomId)
     # # Adjust the scores based on responses from miners.
     rewards = get_rewards(self, winner = game_state.gameWinner, red_team = red_team, blue_team = blue_team, end_reason = end_reason)
 
@@ -441,7 +440,7 @@ async def forward(self):
 
     rewards_list = (
         rewards.tolist() if hasattr(rewards, "tolist") else list(rewards)
-    )
+    ) 
     def _score_at(index: int) -> float:
         return float(rewards_list[index]) if index < len(rewards_list) else 0.0
 
@@ -467,4 +466,4 @@ async def forward(self):
     except Exception as err:  # noqa: BLE001
         bt.logging.error(f"Failed to persist game score {roomId}: {err}")
 
-    time.sleep(30)
+    time.sleep(10)

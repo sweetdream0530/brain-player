@@ -23,7 +23,7 @@ import random
 import bittensor as bt
 
 
-async def ping_uids(dendrite: bt.dendrite, metagraph, uids, timeout=3):
+async def ping_uids(dendrite: bt.dendrite, metagraph, uids, timeout=30):
     """
     Pings a list of UIDs to check their availability on the Bittensor network.
 
@@ -40,6 +40,7 @@ async def ping_uids(dendrite: bt.dendrite, metagraph, uids, timeout=3):
     """
     axons = [metagraph.axons[uid] for uid in uids]
     try:
+        bt.logging.info(f"Pinging {len(uids)} uids with timeout {timeout}s...")
         responses = await dendrite.forward(
             axons,
             game.protocol.PingSynapse(),
@@ -61,12 +62,12 @@ async def ping_uids(dendrite: bt.dendrite, metagraph, uids, timeout=3):
         traceback.print_exc()
         successful_uids = []
         failed_uids = uids
-    bt.logging.debug(f"ping() successful uids: {successful_uids}")
+    bt.logging.info(f"ping() successful uids: {[int(uid) for uid in successful_uids]}")
     bt.logging.debug(f"ping() failed uids    : {failed_uids}")
     return successful_uids, failed_uids
 
 
-async def get_query_api_nodes(dendrite, metagraph, n=0.1, timeout=3):
+async def get_query_api_nodes(dendrite, metagraph, n=0.1, timeout=30):
     """
     Fetches the available API nodes to query for the particular subnet.
 
@@ -103,7 +104,7 @@ async def get_query_api_nodes(dendrite, metagraph, n=0.1, timeout=3):
 
 
 async def get_query_api_axons(
-    wallet, metagraph=None, n=0.1, timeout=3, uids=None
+    wallet, metagraph=None, n=0.1, timeout=30, uids=None
 ):
     """
     Retrieves the axons of query API nodes based on their availability and stake.
