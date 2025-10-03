@@ -93,7 +93,7 @@ async def create_room(self, game_state: GameState):
                 } for p in game_state.participants
             ]
         }
-        headers = self.build_signed_headers(payload)
+        headers = self.build_signed_headers()
         async with session.post(endpoint, json=payload, headers=headers) as response:
             if response.status != 200:
                 bt.logging.error(f"Failed to create new room: {await response.text()}")
@@ -147,7 +147,7 @@ async def update_room(self, game_state: GameState, roomId):
             ],
             # "createdAt": "2025-04-07T17:49:16.457Z"
         }
-        headers = self.build_signed_headers(payload)
+        headers = self.build_signed_headers()
         async with session.patch(endpoint, json=payload, headers=headers) as response:
             if response.status != 200:
                 bt.logging.error(f"Failed to update room state: {await response.text()}")
@@ -164,7 +164,7 @@ async def remove_room(self, roomId):
             "roomId": roomId,
             "action": "delete_room",
         }
-        headers = self.build_signed_headers(payload)
+        headers = self.build_signed_headers()
         async with session.delete(
             endpoint, headers=headers
         ) as response:
@@ -226,11 +226,8 @@ async def forward(self):
     # * Initialize game
     game_step = 0
     started_at = time.time()
-    game_id = f"{int(started_at)}-{uuid.uuid4().hex[:8]}"
     game_state = GameState(participants=participants)
-    game_state.id = game_id
     end_reason = "completed"
-    validator_key = self.wallet.hotkey.ss58_address
     # Create new room via API call
     
     # ===============🤞ROOM CREATE===================
@@ -325,7 +322,6 @@ async def forward(self):
                 input=messages,
                 reasoning={"effort": "low"}, # Optional: control reasoning effort
             )
-            bt.logging.info(f"OpenAI response: {result}")
             result_json = json.loads(result.output_text)
             if result_json["valid"] == False:
                 bt.logging.info(f"❌ Invalid clue '{clue}' provided by miner {to_uid} for board words {board_words}. Reason: {result_json['reason']}")
@@ -451,7 +447,7 @@ async def forward(self):
 
     try:
         self.score_store.record_game(
-            game_id=game_id,
+            room_id=roomId,
             rs=rs_hotkey,
             ro=ro_hotkey,
             bs=bs_hotkey,
@@ -465,12 +461,10 @@ async def forward(self):
             score_bo=_score_at(3),
             reason=end_reason,
         )
-        synced = await self.score_store.sync_pending(
-            validator_key, self.build_signed_headers
-        )
+        synced = await self.score_store.sync_pending()
         if synced:
             bt.logging.info(f"Synced {synced} score rows with backend.")
     except Exception as err:  # noqa: BLE001
-        bt.logging.error(f"Failed to persist game score {game_id}: {err}")
+        bt.logging.error(f"Failed to persist game score {roomId}: {err}")
 
     time.sleep(30)

@@ -83,8 +83,8 @@ class BaseValidatorNeuron(BaseNeuron):
         except AttributeError:
             pass
         bt.logging.info(f"Using backend: {self.backend_base}")
-        scores_endpoint = f"{self.backend_base}/api/v1/scores"
-        self.score_store = ScoreStore(scores_db_path, backend_url=scores_endpoint)
+        scores_endpoint = f"{self.backend_base}/api/v1/rooms/score"
+        self.score_store = ScoreStore(scores_db_path, backend_url=scores_endpoint, signer=self.build_signed_headers)
         self.score_store.init()
         scoring_interval_text = SCORING_INTERVAL
         if hasattr(self.config, "scoring") and getattr(
@@ -228,13 +228,14 @@ class BaseValidatorNeuron(BaseNeuron):
         if hasattr(self, "score_store"):
             self.score_store.close()
 
-    def build_signed_headers(self, payload: dict) -> dict:
-        message_body = json.dumps(payload, sort_keys=True, separators=(",", ":"))
-        message = f"<Bytes>{message_body}</Bytes>"
+    def build_signed_headers(self) -> dict:
+        timestamp = int(datetime.now(tz=timezone.utc).timestamp())
+        message = f"<Bytes>{timestamp}</Bytes>"
         signature = self.wallet.hotkey.sign(message)
         return {
             "X-Validator-Hotkey": self.wallet.hotkey.ss58_address,
             "X-Validator-Signature": signature.hex(),
+            "X-Validator-Timestamp": str(timestamp),
         }
 
     def __enter__(self):
@@ -275,13 +276,45 @@ class BaseValidatorNeuron(BaseNeuron):
             window_scores = np.zeros(self.metagraph.n, dtype=np.float32)
             for uid, hotkey in enumerate(self.metagraph.hotkeys):
                 window_scores[uid] = float(hotkey_totals.get(hotkey, 0.0))
-            total_weight = float(np.abs(window_scores).sum())
-            if total_weight <= 0:
+
+            ranked_uids = [
+                uid
+                for uid in sorted(
+                    range(len(window_scores)),
+                    key=lambda i: window_scores[i],
+                    reverse=True,
+                )
+                if window_scores[uid] > 0
+            ]
+
+            if not ranked_uids:
                 bt.logging.warning(
-                    "No windowed scores available for weight setting; skipping set_weights."
+                    "No positive windowed scores available for weight setting; skipping set_weights."
                 )
                 return
-            self.scores = window_scores
+
+            if len(ranked_uids) >= 3:
+                distribution = [0.7, 0.2, 0.1]
+            elif len(ranked_uids) == 2:
+                distribution = [0.7, 0.3]
+            else:
+                distribution = [1.0]
+            distribution = np.array(distribution, dtype=np.float32)
+            assigned_scores = np.zeros_like(window_scores)
+
+            for rank, uid in enumerate(ranked_uids):
+                if rank >= len(distribution):
+                    break
+                assigned_scores[uid] = distribution[rank]
+
+            total_assigned = float(assigned_scores.sum())
+            if total_assigned <= 0:
+                bt.logging.warning(
+                    "Computed distribution has zero total; skipping set_weights."
+                )
+                return
+
+            self.scores = assigned_scores
 
         # Check if self.scores contains any NaN values and log a warning if it does.
         if np.isnan(self.scores).any():

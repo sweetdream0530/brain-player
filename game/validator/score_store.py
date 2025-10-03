@@ -13,9 +13,10 @@ import bittensor as bt
 class ScoreStore:
     """SQLite-backed store for finished game snapshots and backend synchronisation."""
 
-    def __init__(self, db_path: str, backend_url: str):
+    def __init__(self, db_path: str, backend_url: str, signer=None):
         self.db_path = db_path
         self.backend_url = backend_url
+        self.signer = signer
         folder = os.path.dirname(db_path)
         if folder:
             os.makedirs(folder, exist_ok=True)
@@ -42,7 +43,7 @@ class ScoreStore:
             """
             CREATE TABLE IF NOT EXISTS scores (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                game_id TEXT NOT NULL UNIQUE,
+                room_id TEXT NOT NULL UNIQUE,
                 rs TEXT NOT NULL,
                 ro TEXT NOT NULL,
                 bs TEXT NOT NULL,
@@ -64,7 +65,7 @@ class ScoreStore:
     def record_game(
         self,
         *,
-        game_id: str,
+        room_id: str,
         rs: str,
         ro: str,
         bs: str,
@@ -83,12 +84,12 @@ class ScoreStore:
             cur.execute(
                 """
                 INSERT INTO scores(
-                    game_id, rs, ro, bs, bo, winner,
+                    room_id, rs, ro, bs, bo, winner,
                     started_at, ended_at,
                     score_rs, score_ro, score_bs, score_bo,
                     reason, synced_at
                 ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,NULL)
-                ON CONFLICT(game_id) DO UPDATE SET
+                ON CONFLICT(room_id) DO UPDATE SET
                     rs=excluded.rs,
                     ro=excluded.ro,
                     bs=excluded.bs,
@@ -105,7 +106,7 @@ class ScoreStore:
                 ;
                 """,
                 (
-                    game_id,
+                    room_id,
                     rs,
                     ro,
                     bs,
@@ -124,7 +125,7 @@ class ScoreStore:
 
     def pending(self) -> Iterable[Dict[str, object]]:
         columns = [
-            "game_id",
+            "room_id",
             "rs",
             "ro",
             "bs",
@@ -175,16 +176,16 @@ class ScoreStore:
             cur.close()
         return dict(totals)
 
-    def mark_synced(self, game_id: str) -> None:
+    def mark_synced(self, room_id: str) -> None:
         with self._lock:
             cur = self.conn.cursor()
             cur.execute(
-                "UPDATE scores SET synced_at=? WHERE game_id=?",
-                (int(time.time()), game_id),
+                "UPDATE scores SET synced_at=? WHERE room_id=?",
+                (int(time.time()), room_id),
             )
             cur.close()
 
-    async def sync_pending(self, validator_key: str, signer=None) -> int:
+    async def sync_pending(self) -> int:
         """Pushes unsynced rows to the backend API.
 
         Returns the number of rows marked as synced.
@@ -202,12 +203,6 @@ class ScoreStore:
         async with aiohttp.ClientSession() as session:
             for row in to_sync:
                 payload = {
-                    "validatorKey": validator_key,
-                    "gameId": row["game_id"],
-                    "winner": row["winner"],
-                    "startedAt": row["started_at"],
-                    "endedAt": row["ended_at"],
-                    "reason": row["reason"],
                     "red": {
                         "spymaster": {
                             "hotkey": row["rs"],
@@ -228,26 +223,27 @@ class ScoreStore:
                             "score": row["score_bo"],
                         },
                     },
+                    "reason": row["reason"],
                 }
-                headers = signer(payload) if callable(signer) else None
+                headers = self.signer() if self.signer else {}
                 try:
-                    async with session.post(
-                        self.backend_url,
+                    async with session.patch(
+                        self.backend_url + "/" + row["room_id"],
                         json=payload,
                         headers=headers,
                         timeout=10,
                     ) as resp:
                         if resp.status in (200, 201, 202, 204):
-                            self.mark_synced(row["game_id"])
+                            self.mark_synced(row["room_id"])
                             synced += 1
                         else:
                             text = await resp.text()
                             bt.logging.error(
-                                f"Failed to sync score {row['game_id']}: {resp.status} {text}"
+                                f"Failed to sync score {row['room_id']}: {resp.status} {text}"
                             )
                 except Exception as err:  # noqa: BLE001
                     bt.logging.error(
-                        f"Exception syncing score {row['game_id']}: {err}"
+                        f"Exception syncing score {row['room_id']}: {err}"
                     )
         return synced
 
