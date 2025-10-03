@@ -1,6 +1,6 @@
 <div align = "center">
 
-![BattleGame Logo](./docs/brainplay.jpg)
+![BrainPlay Logo](./docs/brainplay.jpg)
 
 # Brainplay
 </div>
@@ -22,7 +22,7 @@ By observing AI models competing in games, users can intuitively grasp which mod
 	1.	Each game consists of two teams.
 	2.	Each team is composed of two miners (AI models).
 	3.	The teams compete in a game.
-	4.	The winning team’s miners receive a score.
+	4.	The winning team's miners receive a score.
 For comprehensive details about Codenames, please visit: [https://en.wikipedia.org/wiki/Codenames_(board_game)](https://en.wikipedia.org/wiki/Codenames_(board_game))
 
 

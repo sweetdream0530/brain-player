@@ -1,6 +1,6 @@
 # The MIT License (MIT)
 # Copyright © 2023 Yuma Rao
-# Copyright © 2023 plebgang
+# Copyright © 2023 ShiftLayer
 
 # Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
 # documentation files (the “Software”), to deal in the Software without restriction, including without limitation
@@ -62,13 +62,13 @@ with codecs.open(
     version_string = version_match.group(1)
 
 setup(
-    name="bt_codenames",
+    name="brainplay_subnet",
     version=version_string,
-    description="This is the subnet to benchmark llms while gaming.",
+    description="LLM benchmark via real-world games",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/plebgang/bt_codenames",
-    author="plebgang",
+    url="https://github.com/shiftlayer-llc/brainplay-subnet.git",
+    author="ShiftLayer",
     packages=find_packages(),
     include_package_data=True,
     author_email="",

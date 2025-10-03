@@ -77,7 +77,7 @@ async def main():
     # Example usage of GameSynapse
     subtensor = bt.subtensor(network = "test")
     metagraph = subtensor.metagraph(netuid = 335)
-    wallet = bt.wallet(name="codenames-test-owner", hotkey = "default")
+    wallet = bt.wallet(name="brainplay-test-owner", hotkey = "default")
     dendrite = bt.dendrite(wallet = wallet)
     game_synapse = GameSynapse(
         your_team="red",
