@@ -4,6 +4,7 @@ Scoring configuration helpers and defaults.
 Provides a human-readable interval constant and a parser that converts
 values like "7 days", "24 hours", "90 minutes" into seconds.
 """
+
 from __future__ import annotations
 
 import re

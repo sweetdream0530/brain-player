@@ -26,13 +26,16 @@ from dotenv import load_dotenv
 import game
 from game.utils.spySysPrompt import spySysPrompt
 from game.utils.opSysPrompt import opSysPrompt
+
 # Bittensor Miner Template:
 from game.protocol import GameSynapse, GameSynapseOutput, PingSynapse
 import openai
+
 # import base miner class which takes care of most of the boilerplate
 from game.base.miner import BaseMinerNeuron
- 
+
 load_dotenv()
+
 
 class Miner(BaseMinerNeuron):
     """
@@ -82,9 +85,9 @@ class Miner(BaseMinerNeuron):
         """
 
         bt.logging.info("💌 Received GameSynapse request")
-        
+
         # Build board and clue strings outside the f-string to avoid backslash-in-expression errors.
-        if synapse.your_role == 'operative':
+        if synapse.your_role == "operative":
             board = [
                 {
                     "word": card.word,
@@ -93,7 +96,9 @@ class Miner(BaseMinerNeuron):
                 }
                 for card in synapse.cards
             ]
-            clue_block = f"Your Clue: {synapse.your_clue}\nNumber: {synapse.your_number}"
+            clue_block = (
+                f"Your Clue: {synapse.your_clue}\nNumber: {synapse.your_number}"
+            )
         else:
             board = synapse.cards
             clue_block = ""
@@ -109,57 +114,57 @@ class Miner(BaseMinerNeuron):
 
         {clue_block}"""
         messages: typing.List(typing.Dict) = []
-        messages.append({
-            'role': 'system',
-            'content': spySysPrompt if synapse.your_role == 'spymaster' else opSysPrompt
-        })
-        messages.append({
-            'role': 'user',
-            'content': userPrompt
-        })
+        messages.append(
+            {
+                "role": "system",
+                "content": (
+                    spySysPrompt if synapse.your_role == "spymaster" else opSysPrompt
+                ),
+            }
+        )
+        messages.append({"role": "user", "content": userPrompt})
 
         async def get_gpt4_response(messages):
-            
+
             try:
-                client = openai.OpenAI(api_key=os.environ.get('OPENAI_KEY'))
+                client = openai.OpenAI(api_key=os.environ.get("OPENAI_KEY"))
                 response = client.chat.completions.create(
-                    model="gpt-4o",
-                    messages=messages
+                    model="gpt-4o", messages=messages
                 )
                 return response.choices[0].message.content
             except Exception as e:
                 bt.logging.error(f"Error fetching response from GPT-4: {e}")
                 return None
-        
+
         response_str = await get_gpt4_response(messages)
         response_dict = json.loads(response_str)
-        if 'clue' in response_dict:
-            clue = response_dict['clue']
+        if "clue" in response_dict:
+            clue = response_dict["clue"]
         else:
             clue = None
-        if 'number' in response_dict:
-            number = response_dict['number']
+        if "number" in response_dict:
+            number = response_dict["number"]
         else:
             number = None
-        if 'reasoning' in response_dict:
-            reasoning = response_dict['reasoning']
+        if "reasoning" in response_dict:
+            reasoning = response_dict["reasoning"]
         else:
             reasoning = None
-            
-        if 'guesses' in response_dict:
-            guesses = response_dict['guesses']
+
+        if "guesses" in response_dict:
+            guesses = response_dict["guesses"]
             print(guesses)
         else:
             guesses = None
-        
-        synapse.output = GameSynapseOutput(clue_text=clue, number=number, reasoning=reasoning, guesses=guesses)
+
+        synapse.output = GameSynapseOutput(
+            clue_text=clue, number=number, reasoning=reasoning, guesses=guesses
+        )
         bt.logging.info(f"🚀 successfully get response from llm: {synapse.output}")
 
         return synapse
 
-    async def _blacklist(
-        self, synapse: bt.Synapse
-    ) -> typing.Tuple[bool, str]:
+    async def _blacklist(self, synapse: bt.Synapse) -> typing.Tuple[bool, str]:
         """
         Evaluates whether an incoming request should be blacklisted and ignored based on predefined security criteria.
 
@@ -188,11 +193,9 @@ class Miner(BaseMinerNeuron):
 
         If none of the blacklist conditions are met, the request should proceed to further processing.
         """
-        
+
         if synapse.dendrite is None or synapse.dendrite.hotkey is None:
-            bt.logging.warning(
-                "Received a request without a dendrite or hotkey."
-            )
+            bt.logging.warning("Received a request without a dendrite or hotkey.")
             return True, "Missing dendrite or hotkey"
 
         # TODO(developer): Define how miners should blacklist requests.
@@ -208,9 +211,7 @@ class Miner(BaseMinerNeuron):
             return True, "Unrecognized hotkey"
         # Pass if owner of the subnet is the sender
         if uid == 0:
-            bt.logging.debug(
-                f"Not Blacklisting owner hotkey {synapse.dendrite.hotkey}"
-            )
+            bt.logging.debug(f"Not Blacklisting owner hotkey {synapse.dendrite.hotkey}")
             return False, "Owner hotkey"
         if self.config.blacklist.force_validator_permit:
             # If the config is set to force validator permit, then we should only allow requests from validators.
@@ -223,21 +224,19 @@ class Miner(BaseMinerNeuron):
         # stake = self.metagraph.S[uid].item()
         # if stake < self.config.blacklist.minimum_stake_requirement:
         #     return True, "pubkey stake below min_allowed_stake"
-        
+
         bt.logging.debug(
             f"Not Blacklisting recognized hotkey {synapse.dendrite.hotkey}"
         )
-        
+
         return False, "Hotkey recognized!"
 
     async def blacklist(
-            self, synapse: game.protocol.GameSynapse
+        self, synapse: game.protocol.GameSynapse
     ) -> typing.Tuple[bool, str]:
         return await self._blacklist(synapse)
 
-    async def blacklist_ping(
-            self, synapse: PingSynapse
-    ) -> typing.Tuple[bool, str]:
+    async def blacklist_ping(self, synapse: PingSynapse) -> typing.Tuple[bool, str]:
         return await self._blacklist(synapse)
 
     async def priority(self, synapse: game.protocol.GameSynapse) -> float:
@@ -263,9 +262,7 @@ class Miner(BaseMinerNeuron):
         - Entities with a higher stake receive a higher priority score.
         """
         if synapse.dendrite is None or synapse.dendrite.hotkey is None:
-            bt.logging.warning(
-                "Received a request without a dendrite or hotkey."
-            )
+            bt.logging.warning("Received a request without a dendrite or hotkey.")
             return 0.0
 
         # TODO(developer): Define how miners should prioritize requests.

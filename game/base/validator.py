@@ -84,16 +84,18 @@ class BaseValidatorNeuron(BaseNeuron):
             pass
         bt.logging.info(f"Using backend: {self.backend_base}")
         scores_endpoint = f"{self.backend_base}/api/v1/rooms/score"
-        self.score_store = ScoreStore(scores_db_path, backend_url=scores_endpoint, signer=self.build_signed_headers)
+        self.score_store = ScoreStore(
+            scores_db_path,
+            backend_url=scores_endpoint,
+            signer=self.build_signed_headers,
+        )
         self.score_store.init()
         scoring_interval_text = SCORING_INTERVAL
         if hasattr(self.config, "scoring") and getattr(
             self.config.scoring, "interval", None
         ):
             scoring_interval_text = self.config.scoring.interval
-        self.scoring_window_seconds = parse_interval_to_seconds(
-            scoring_interval_text
-        )
+        self.scoring_window_seconds = parse_interval_to_seconds(scoring_interval_text)
 
         # Init sync with the network. Updates the metagraph.
         self.sync()
@@ -133,15 +135,12 @@ class BaseValidatorNeuron(BaseNeuron):
                 pass
 
         except Exception as e:
-            bt.logging.error(
-                f"Failed to create Axon initialize with exception: {e}"
-            )
+            bt.logging.error(f"Failed to create Axon initialize with exception: {e}")
             pass
 
     async def concurrent_forward(self):
         coroutines = [
-            self.forward()
-            for _ in range(self.config.neuron.num_concurrent_forwards)
+            self.forward() for _ in range(self.config.neuron.num_concurrent_forwards)
         ]
         await asyncio.gather(*coroutines)
 
@@ -199,7 +198,7 @@ class BaseValidatorNeuron(BaseNeuron):
                 bt.logging.debug(
                     str(print_exception(type(err), err, err.__traceback__))
                 )
-                
+
                 time.sleep(2)
 
     def run_in_background_thread(self):
@@ -359,7 +358,7 @@ class BaseValidatorNeuron(BaseNeuron):
         )
         bt.logging.debug("uint_weights", uint_weights)
         bt.logging.debug("uint_uids", uint_uids)
-    
+
         # Set the weights on chain via our subtensor connection.
         result, msg = self.subtensor.set_weights(
             wallet=self.wallet,
@@ -455,9 +454,7 @@ class BaseValidatorNeuron(BaseNeuron):
         # Update scores with rewards produced by this step.
         # shape: [ metagraph.n ]
         alpha: float = self.config.neuron.moving_average_alpha
-        self.scores: np.ndarray = (
-            alpha * scattered_rewards + (1 - alpha) * self.scores
-        )
+        self.scores: np.ndarray = alpha * scattered_rewards + (1 - alpha) * self.scores
         bt.logging.debug(f"Updated moving avg scores: {self.scores}")
 
     def save_state(self):

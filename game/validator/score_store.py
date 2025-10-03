@@ -10,6 +10,7 @@ from typing import Dict, Iterable, Optional
 import aiohttp
 import bittensor as bt
 
+
 class ScoreStore:
     """SQLite-backed store for finished game snapshots and backend synchronisation."""
 
@@ -242,9 +243,7 @@ class ScoreStore:
                                 f"Failed to sync score {row['room_id']}: {resp.status} {text}"
                             )
                 except Exception as err:  # noqa: BLE001
-                    bt.logging.error(
-                        f"Exception syncing score {row['room_id']}: {err}"
-                    )
+                    bt.logging.error(f"Exception syncing score {row['room_id']}: {err}")
         return synced
 
     def close(self):

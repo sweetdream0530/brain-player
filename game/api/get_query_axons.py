@@ -62,8 +62,10 @@ async def ping_uids(dendrite: bt.dendrite, metagraph, uids, timeout=30):
         traceback.print_exc()
         successful_uids = []
         failed_uids = uids
+
     bt.logging.info(f"ping() successful uids: {[int(uid) for uid in successful_uids]}")
     bt.logging.debug(f"ping() failed uids    : {failed_uids}")
+
     return successful_uids, failed_uids
 
 
@@ -80,17 +82,11 @@ async def get_query_api_nodes(dendrite, metagraph, n=0.1, timeout=30):
     Returns:
         list: A list of UIDs representing the available API nodes.
     """
-    bt.logging.debug(
-        f"Fetching available API nodes for subnet {metagraph.netuid}"
-    )
+    bt.logging.debug(f"Fetching available API nodes for subnet {metagraph.netuid}")
     vtrust_uids = [
-        uid.item()
-        for uid in metagraph.uids
-        if metagraph.validator_trust[uid] > 0
+        uid.item() for uid in metagraph.uids if metagraph.validator_trust[uid] > 0
     ]
-    top_uids = np.where(metagraph.S > np.quantile(metagraph.S, 1 - n))[
-        0
-    ].tolist()
+    top_uids = np.where(metagraph.S > np.quantile(metagraph.S, 1 - n))[0].tolist()
     init_query_uids = set(top_uids).intersection(set(vtrust_uids))
     query_uids, _ = await ping_uids(
         dendrite, metagraph, list(init_query_uids), timeout=timeout
@@ -103,9 +99,7 @@ async def get_query_api_nodes(dendrite, metagraph, n=0.1, timeout=30):
     return query_uids
 
 
-async def get_query_api_axons(
-    wallet, metagraph=None, n=0.1, timeout=30, uids=None
-):
+async def get_query_api_axons(wallet, metagraph=None, n=0.1, timeout=30, uids=None):
     """
     Retrieves the axons of query API nodes based on their availability and stake.
 

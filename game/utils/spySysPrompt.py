@@ -41,4 +41,3 @@ Return a valid JSON object with the following structure:
 
 Your response will be parsed as JSON, so make sure you ONLY return a JSON object and nothing else.
 """
-

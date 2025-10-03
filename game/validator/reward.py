@@ -31,7 +31,7 @@ import bittensor as bt
 #     """
 
 #     if winner == "red":
-        
+
 #     bt.logging.info(
 #         f"In rewards, query val: {query}, response val: {response}, rewards val: {1.0 if response == query * 2 else 0}"
 #     )
@@ -39,8 +39,7 @@ import bittensor as bt
 
 
 def get_rewards(
-    self,
-    winner, red_team:Dict, blue_team: Dict, end_reason: str = ""
+    self, winner, red_team: Dict, blue_team: Dict, end_reason: str = ""
 ) -> np.ndarray:
     """
     Calculates and returns an array of rewards based on the winning team.

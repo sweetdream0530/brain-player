@@ -24,13 +24,16 @@ from pydantic import BaseModel, Field
 
 class PingSynapse(bt.Synapse):
     """Lightweight ping used by validators to discover available miners."""
+
     is_available: bool = False
+
 
 class GameSynapseOutput(BaseModel):
     clue_text: typing.Optional[str] = None
     number: typing.Optional[int] = None
     guesses: typing.Optional[typing.List[str]] = None
     reasoning: typing.Optional[str] = None
+
 
 class GameSynapse(bt.Synapse):
     """
@@ -45,6 +48,7 @@ class GameSynapse(bt.Synapse):
     - cards: List[CardType]
     - output: GameSynapseOutput
     """
+
     your_team: str = None
     your_role: str = None
     remaining_red: int = 0
@@ -53,7 +57,6 @@ class GameSynapse(bt.Synapse):
     your_number: typing.Optional[int] = None
     cards: typing.List[CardType] = None
     output: GameSynapseOutput | None = None
-
 
     def deserialize(self) -> GameSynapseOutput | None:
         """
@@ -72,4 +75,3 @@ class GameSynapse(bt.Synapse):
         GameSynapseOutput(clue_text="example", number=1)
         """
         return self.output
-    
