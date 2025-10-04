@@ -72,8 +72,17 @@ if ! [[ "$CHECK_INTERVAL" =~ ^[0-9]+$ ]] || [[ "$CHECK_INTERVAL" -lt 60 ]]; then
 fi
 
 # Create logs and backup directories if they don't exist
-mkdir -p "$(dirname "$LOG_FILE")"
-mkdir -p "$BACKUP_DIR"
+# Ensure we're in the project root directory
+cd "$(dirname "$(dirname "$(readlink -f "$0")")")"
+mkdir -p "$(dirname "$LOG_FILE")" 2>/dev/null || true
+mkdir -p "$BACKUP_DIR" 2>/dev/null || true
+
+# Verify log directory exists and is writable
+if [ ! -d "$(dirname "$LOG_FILE")" ]; then
+    echo "Warning: Could not create log directory $(dirname "$LOG_FILE")"
+    echo "Logs will only be displayed to console"
+    LOG_FILE="/dev/null"
+fi
 
 check_package_installed() {
     local package_name="$1"
@@ -218,9 +227,15 @@ rollback_from_backup() {
 # Clean old backups (keep only last 5)
 cleanup_old_backups() {
     log_debug "Cleaning up old backups..."
-    cd "$BACKUP_DIR"
-    ls -t | tail -n +6 | xargs -r rm -rf
-    log_debug "Old backups cleaned up"
+    cd "$BACKUP_DIR" 2>/dev/null || return 0
+    # Only show cleanup message if there are actually files to clean up
+    local files_to_clean=$(ls -t 2>/dev/null | tail -n +6)
+    if [ -n "$files_to_clean" ]; then
+        echo "$files_to_clean" | xargs -r rm -rf 2>/dev/null
+        log_debug "Old backups cleaned up"
+    else
+        log_debug "No old backups to clean up"
+    fi
 }
 
 # Check if pm2 is installed
@@ -513,14 +528,15 @@ log_info "Starting auto-update monitoring loop..."
                         # Clean up old backups
                         cleanup_old_backups
 
-                        # Restart autorun script
-                        log_info "Restarting script..."
-                        ./$(basename $0) $old_args && exit
+                        # Restart the validator PM2 process instead of the entire script
+                        log_info "Restarting validator process..."
+                        pm2 restart $proc_name
+                        log_info "Validator updated and restarted successfully!"
                     else
                         log_error "**Will not update**"
                         log_error "It appears you have made changes on your local copy. Please stash your changes using git stash."
                         # Remove the backup since update failed
-                        rm -rf "$backup_path"
+                        rm -rf "$backup_path" 2>/dev/null
                     fi
                 else
                     # current version is newer than the latest on git. This is likely a local copy, so do nothing. 
