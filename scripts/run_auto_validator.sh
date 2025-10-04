@@ -7,10 +7,14 @@ proc_name="brainplay_auto_validator"
 args=()
 version_location="./game/__init__.py"
 version="__version__"
+branch="dev"
 
 # Set repository directory and Python venv path
 REPO_DIR="$(dirname "$(dirname "$autoRunLoc")")"
 PYTHON_ENV="$REPO_DIR/venv"
+
+# Change to repository directory to ensure relative paths work correctly
+cd "$REPO_DIR"
 
 # Default configuration - can be overridden by environment variables or command line
 DEFAULT_CHECK_INTERVAL=1200  # Check for updates every 20 minutes
@@ -72,8 +76,6 @@ if ! [[ "$CHECK_INTERVAL" =~ ^[0-9]+$ ]] || [[ "$CHECK_INTERVAL" -lt 60 ]]; then
 fi
 
 # Create logs and backup directories if they don't exist
-# Ensure we're in the project root directory
-cd "$(dirname "$(dirname "$(readlink -f "$0")")")"
 mkdir -p "$(dirname "$LOG_FILE")" 2>/dev/null || true
 mkdir -p "$BACKUP_DIR" 2>/dev/null || true
 
@@ -317,7 +319,7 @@ check_variable_value_on_github() {
     local file_path="$2"
     local variable_name="$3"
 
-    local url="https://api.github.com/repos/$repo/contents/$file_path?ref=dev"
+    local url="https://api.github.com/repos/$repo/contents/$file_path?ref=$branch"
     
     # Use curl with timeout - single attempt since we check every 20 minutes anyway
     local response=$(curl -s --max-time 30 "$url" 2>/dev/null)
@@ -416,7 +418,6 @@ if [[ -z "$script" ]]; then
     exit 1
 fi
 
-branch=$(git branch --show-current)            # get current branch.
 echo watching branch: $branch
 echo pm2 process name: $proc_name
 
