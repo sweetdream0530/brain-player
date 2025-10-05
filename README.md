@@ -115,8 +115,58 @@ pip install -e .
 
 ### Running Validator
 
-`python neurons/validator.py --wallet.name test_validator --wallet.hotkey h1 --netuid 117 --logging.info`
+#### Option 1: Manual Update (Traditional Method)
+
+Run the validator manually and handle updates yourself:
+
+```bash
+python neurons/validator.py --wallet.name test_validator --wallet.hotkey h1 --netuid 117 --logging.info
+```
+or if you're using PM2
+
+```bash
+pm2 start neurons/validator.py --name brainplay-manual-validator -- --wallet.name test_validator --wallet.hotkey h1 --netuid 117 --logging.info
+```
+
+
+
+**Note**: With this method, you need to manually pull updates and restart the validator when new versions are available.
+
+#### Option 2: Auto-Update (Recommended)
+
+Set up automatic updates that keep your validator current with the latest code:
+
+1. **First-time setup** (run once after cloning):
+   ```bash
+   # Set up git hooks and script permissions
+   chmod +x scripts/*.sh && chmod +x .git/hooks/post-merge 2>/dev/null || ./scripts/setup_hooks.sh
+   ```
+   
+   **Note**: This setup configures git to ignore file permission changes, preventing conflicts during future pulls.
+
+2. **Run the auto-validator**:
+   ```bash
+   ./scripts/run_auto_validator.sh --wallet.name test_validator --wallet.hotkey h1 --netuid 117 --logging.info
+   ```
+   or if you're using PM2
+
+   ```bash
+   pm2 start ./scripts/run_auto_validator.sh --name brainplay-auto-validator -- --wallet.name test_validator --wallet.hotkey h1 --netuid 117 --logging.info
+   ```
+
+**Benefits of Auto-Update**:
+- ✅ Automatically checks for updates every 5 minutes
+- ✅ Pulls latest code and restarts validator when updates are available
+- ✅ Maintains validator uptime and ensures you're always running the latest version
+- ✅ Handles script permissions automatically after git pulls
+- ✅ Creates backups before updates
+- ✅ Comprehensive logging of all operations
 
 ### Running Miner
 
 `python neurons/miner.py --wallet.name test_miner_0 --wallet.hotkey h0 --netuid 117 --logging.info --axon.port 10000`
+or if you're using PM2
+
+```bash
+pm2 start neurons/miner.py --name brainplay-miner-0 -- --wallet.name test_miner_0 --wallet.hotkey h0 --netuid 117 --logging.info --axon.port 10000
+```
