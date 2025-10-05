@@ -215,8 +215,7 @@ rollback_from_backup() {
     # Reinstall dependencies from backup
     if [[ -f "$backup_path/requirements.txt" ]]; then
         log_info "Reinstalling dependencies from backup..."
-        source "$PYTHON_ENV/bin/activate"
-        pip install -r "$backup_path/requirements.txt"
+        "$PYTHON_ENV/bin/pip" install -r "$backup_path/requirements.txt"
     fi
     
     # Restart the validator
@@ -427,7 +426,7 @@ current_version=$(read_version_value)
 # Check if script is already running with pm2
 if pm2 status | grep -q $proc_name; then
     echo "The script is already running with pm2. Stopping and restarting..."
-    pkill -9 python
+    pm2 stop $proc_name
     pm2 delete $proc_name
 fi
 
@@ -445,7 +444,7 @@ echo "module.exports = {
   apps : [{
     name   : '$proc_name',
     script : '$script',
-    interpreter: 'python3',
+    interpreter: '$PYTHON_ENV/bin/python',
     min_uptime: '5m',
     max_restarts: '5',
     args: [$joined_args]
@@ -491,8 +490,7 @@ log_info "Starting auto-update monitoring loop..."
 
                         # Install latest changes just in case.
                         log_info "Installing updated dependencies..."
-                        source "$PYTHON_ENV/bin/activate"
-                        if ! pip install -e .; then
+                        if ! "$PYTHON_ENV/bin/pip" install -e .; then
                             log_error "Failed to install dependencies. Rolling back..."
                             rollback_from_backup "$backup_path"
                             sleep 1200
@@ -503,7 +501,6 @@ log_info "Starting auto-update monitoring loop..."
                         # TODO (shib): Remove this pm2 del in the next spec version update.
                         # pm2 del auto_run_validator
                         log_info "Restarting PM2 process"
-                        pkill -9 python
                         
                         # Test if the restart is successful
                         if ! pm2 restart $proc_name; then
