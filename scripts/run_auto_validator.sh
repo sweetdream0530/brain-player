@@ -34,7 +34,7 @@ readonly DEFAULT_LOG_FILE="./logs/validator_auto_update.log"
 readonly DEFAULT_BACKUP_DIR="./backups"
 readonly VERSION_FILE="./game/__init__.py"
 readonly VERSION_VAR="__version__"
-readonly GIT_BRANCH="dev"
+readonly GIT_BRANCH="main"
 readonly GITHUB_REPO="shiftlayer-llc/brainplay-subnet"
 
 # Runtime variables
@@ -94,6 +94,12 @@ log() {
     shift
     local message="$*"
     local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    
+    # Ensure log directory exists before writing
+    if [[ "$LOG_FILE" != "/dev/null" ]]; then
+        mkdir -p "$(dirname "$LOG_FILE")" 2>/dev/null || true
+    fi
+    
     echo "[$timestamp] [$level] $message" | tee -a "$LOG_FILE"
 }
 
@@ -405,13 +411,13 @@ run_monitoring_loop() {
                     log_warn "Local version is newer than remote. Manual update required."
                 fi
             else
-                log_debug "No update needed. Current version is up to date."
+                log_info "No update needed. Current version is up to date."
             fi
         else
             log_error "Not a Git installation. Please install from source."
         fi
         
-        log_debug "Next check in $CHECK_INTERVAL seconds ($((CHECK_INTERVAL/60)) minutes)..."
+        log_info "Next check in $CHECK_INTERVAL seconds ($((CHECK_INTERVAL/60)) minutes)..."
         sleep $CHECK_INTERVAL
     done
 }
