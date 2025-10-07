@@ -346,13 +346,15 @@ EOF
 run_monitoring_loop() {
     local current_version=$(read_version_value)
     
-    log_info "--------------------------------------------------"
+    log_info "---------------------------------------------"
     log_info "Starting auto-update monitoring loop..."
     log_info "Process name: $monitor_proc_name"
     log_info "Check interval: $CHECK_INTERVAL seconds"
+    log_info "---------------------------------------------"
     log_info "Current version: $current_version"
     
     while true; do
+        log_info "******************************"
         log_info "Checking for updates..."
         
         # Check if we're in a git repository using git command
