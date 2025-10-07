@@ -34,8 +34,18 @@ readonly DEFAULT_LOG_FILE="./logs/validator_auto_update.log"
 readonly DEFAULT_BACKUP_DIR="./backups"
 readonly VERSION_FILE="./game/__init__.py"
 readonly VERSION_VAR="__version__"
-readonly GIT_BRANCH="main"
 readonly GITHUB_REPO="shiftlayer-llc/brainplay-subnet"
+
+# Dynamically get the current git branch
+get_current_branch() {
+    if [ -d ".git" ]; then
+        git branch --show-current 2>/dev/null || echo "main"
+    else
+        echo "main"
+    fi
+}
+
+readonly GIT_BRANCH=$(get_current_branch)
 
 # Runtime variables
 script="$DEFAULT_SCRIPT"
