@@ -16,6 +16,7 @@
 # OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.
 
+import asyncio
 import time
 import uuid
 import bittensor as bt
@@ -76,134 +77,166 @@ def resetAnimations(self, cards):
 
 async def create_room(self, game_state: GameState):
     endpoint = f"{self.backend_base}/api/v1/rooms/create"
-    async with aiohttp.ClientSession() as session:
-        payload = {
-            "validatorKey": self.wallet.hotkey.ss58_address,
-            "cards": [
-                {
-                    "word": card.word,
-                    "color": card.color,
-                    "isRevealed": card.is_revealed,
-                    "wasRecentlyRevealed": card.was_recently_revealed,
-                }
-                for card in game_state.cards
-            ],
-            "chatHistory": [],  # Game just started, no chat history yet
-            "currentTeam": game_state.currentTeam.value,
-            "currentRole": game_state.currentRole.value,
-            "previousTeam": None,  # Game just started, no previous team
-            "previousRole": None,  # Game just started, no previous role
-            "remainingRed": game_state.remainingRed,
-            "remainingBlue": game_state.remainingBlue,
-            "currentClue": None,  # Game just started, no current clue
-            "currentGuesses": [],  # Game just started, no guesses yet
-            "gameWinner": None,  # Game just started, no winner
-            "participants": [
-                {
-                    "name": p.name,
-                    "hotKey": p.hotkey,
-                    "team": p.team.value,
-                    "role": p.role.value,
-                }
-                for p in game_state.participants
-            ],
-        }
-        headers = self.build_signed_headers()
-        async with session.post(endpoint, json=payload, headers=headers) as response:
-            if response.status != 200:
-                bt.logging.error(f"Failed to create new room: {await response.text()}")
-                return None
-            else:
-                bt.logging.info(f"Room created successfully: {await response.text()}")
-                return json.loads(await response.text())["data"]["id"]
+    try:
+        async with aiohttp.ClientSession() as session:
+            payload = {
+                "validatorKey": self.wallet.hotkey.ss58_address,
+                "cards": [
+                    {
+                        "word": card.word,
+                        "color": card.color,
+                        "isRevealed": card.is_revealed,
+                        "wasRecentlyRevealed": card.was_recently_revealed,
+                    }
+                    for card in game_state.cards
+                ],
+                "chatHistory": [],  # Game just started, no chat history yet
+                "currentTeam": game_state.currentTeam.value,
+                "currentRole": game_state.currentRole.value,
+                "previousTeam": None,  # Game just started, no previous team
+                "previousRole": None,  # Game just started, no previous role
+                "remainingRed": game_state.remainingRed,
+                "remainingBlue": game_state.remainingBlue,
+                "currentClue": None,  # Game just started, no current clue
+                "currentGuesses": [],  # Game just started, no guesses yet
+                "gameWinner": None,  # Game just started, no winner
+                "participants": [
+                    {
+                        "name": p.name,
+                        "hotKey": p.hotkey,
+                        "team": p.team.value,
+                        "role": p.role.value,
+                    }
+                    for p in game_state.participants
+                ],
+            }
+            headers = self.build_signed_headers()
+            async with session.post(endpoint, json=payload, headers=headers, timeout=10) as response:
+                if response.status != 200:
+                    response_text = await response.text()
+                    bt.logging.error(f"Failed to create new room: HTTP {response.status} - {response_text}")
+                    return None
+                else:
+                    response_text = await response.text()
+                    bt.logging.info(f"Room created successfully: {response_text}")
+                    try:
+                        return json.loads(response_text)["data"]["id"]
+                    except (json.JSONDecodeError, KeyError) as e:
+                        bt.logging.error(f"Failed to parse room creation response: {e}")
+                        return None
+    except aiohttp.ClientError as e:
+        bt.logging.error(f"Network error creating room: {e}")
+        return None
+    except asyncio.TimeoutError:
+        bt.logging.error(f"Timeout error creating room at {endpoint}")
+        return None
+    except Exception as e:
+        bt.logging.error(f"Unexpected error creating room: {e}")
+        return None
 
 
 async def update_room(self, game_state: GameState, roomId):
     endpoint = f"{self.backend_base}/api/v1/rooms/{roomId}"
-    async with aiohttp.ClientSession() as session:
-        payload = {
-            "validatorKey": self.wallet.hotkey.ss58_address,
-            "cards": [
-                {
-                    "word": card.word,
-                    "color": card.color,
-                    "isRevealed": card.is_revealed,
-                    "wasRecentlyRevealed": card.was_recently_revealed,
-                }
-                for card in game_state.cards
-            ],
-            "chatHistory": [
-                {
-                    "sender": msg.sender.value,
-                    "message": msg.message,
-                    "team": msg.team.value,
-                    "reasoning": msg.reasoning,
-                    "clueText": msg.clueText,
-                    "number": msg.number,
-                    "guesses": msg.guesses,
-                }
-                for msg in game_state.chatHistory
-            ],
-            "currentTeam": game_state.currentTeam.value,
-            "currentRole": game_state.currentRole.value,
-            "previousTeam": (
-                game_state.previousTeam.value if game_state.previousTeam else None
-            ),
-            "previousRole": (
-                game_state.previousRole.value if game_state.previousRole else None
-            ),
-            "remainingRed": game_state.remainingRed,
-            "remainingBlue": game_state.remainingBlue,
-            "currentClue": (
-                {
-                    "clueText": game_state.currentClue.clueText,
-                    "number": game_state.currentClue.number,
-                }
-                if game_state.currentClue
-                else None
-            ),
-            "currentGuesses": (
-                game_state.currentGuesses if game_state.currentGuesses else []
-            ),
-            "gameWinner": (
-                game_state.gameWinner.value if game_state.gameWinner else None
-            ),
-            "participants": [
-                {
-                    "name": p.name,
-                    "hotKey": p.hotkey,
-                    "team": p.team.value,
-                    "role": p.role.value,
-                }
-                for p in game_state.participants
-            ],
-            # "createdAt": "2025-04-07T17:49:16.457Z"
-        }
-        headers = self.build_signed_headers()
-        async with session.patch(endpoint, json=payload, headers=headers) as response:
-            if response.status != 200:
-                bt.logging.error(
-                    f"Failed to update room state: {await response.text()}"
-                )
-            else:
-                bt.logging.info("Room state updated successfully")
+    try:
+        async with aiohttp.ClientSession() as session:
+            payload = {
+                "validatorKey": self.wallet.hotkey.ss58_address,
+                "cards": [
+                    {
+                        "word": card.word,
+                        "color": card.color,
+                        "isRevealed": card.is_revealed,
+                        "wasRecentlyRevealed": card.was_recently_revealed,
+                    }
+                    for card in game_state.cards
+                ],
+                "chatHistory": [
+                    {
+                        "sender": msg.sender.value,
+                        "message": msg.message,
+                        "team": msg.team.value,
+                        "reasoning": msg.reasoning,
+                        "clueText": msg.clueText,
+                        "number": msg.number,
+                        "guesses": msg.guesses,
+                    }
+                    for msg in game_state.chatHistory
+                ],
+                "currentTeam": game_state.currentTeam.value,
+                "currentRole": game_state.currentRole.value,
+                "previousTeam": (
+                    game_state.previousTeam.value if game_state.previousTeam else None
+                ),
+                "previousRole": (
+                    game_state.previousRole.value if game_state.previousRole else None
+                ),
+                "remainingRed": game_state.remainingRed,
+                "remainingBlue": game_state.remainingBlue,
+                "currentClue": (
+                    {
+                        "clueText": game_state.currentClue.clueText,
+                        "number": game_state.currentClue.number,
+                    }
+                    if game_state.currentClue
+                    else None
+                ),
+                "currentGuesses": (
+                    game_state.currentGuesses if game_state.currentGuesses else []
+                ),
+                "gameWinner": (
+                    game_state.gameWinner.value if game_state.gameWinner else None
+                ),
+                "participants": [
+                    {
+                        "name": p.name,
+                        "hotKey": p.hotkey,
+                        "team": p.team.value,
+                        "role": p.role.value,
+                    }
+                    for p in game_state.participants
+                ],
+                # "createdAt": "2025-04-07T17:49:16.457Z"
+            }
+            headers = self.build_signed_headers()
+            async with session.patch(endpoint, json=payload, headers=headers, timeout=10) as response:
+                if response.status != 200:
+                    response_text = await response.text()
+                    bt.logging.error(
+                        f"Failed to update room state: HTTP {response.status} - {response_text}"
+                    )
+                else:
+                    bt.logging.info("Room state updated successfully")
+    except aiohttp.ClientError as e:
+        bt.logging.error(f"Network error updating room {roomId}: {e}")
+    except asyncio.TimeoutError:
+        bt.logging.error(f"Timeout error updating room {roomId} at {endpoint}")
+    except Exception as e:
+        bt.logging.error(f"Unexpected error updating room {roomId}: {e}")
 
 
 async def remove_room(self, roomId):
     # return
     endpoint = f"{self.backend_base}/api/v1/rooms/{roomId}"
-    async with aiohttp.ClientSession() as session:
-        payload = {
-            "validatorKey": self.wallet.hotkey.ss58_address,
-            "roomId": roomId,
-            "action": "delete_room",
-        }
-        headers = self.build_signed_headers()
-        async with session.delete(endpoint, headers=headers) as response:
-            if response.status != 200:
-                bt.logging.error(f"Failed to delete room: {await response.text()}")
-            else:
-                bt.logging.info("Room deleted successfully")
+    try:
+        async with aiohttp.ClientSession() as session:
+            payload = {
+                "validatorKey": self.wallet.hotkey.ss58_address,
+                "roomId": roomId,
+                "action": "delete_room",
+            }
+            headers = self.build_signed_headers()
+            async with session.delete(endpoint, headers=headers, timeout=10) as response:
+                if response.status != 200:
+                    response_text = await response.text()
+                    bt.logging.error(f"Failed to delete room: HTTP {response.status} - {response_text}")
+                else:
+                    bt.logging.info("Room deleted successfully")
+    except aiohttp.ClientError as e:
+        bt.logging.error(f"Network error deleting room {roomId}: {e}")
+    except asyncio.TimeoutError:
+        bt.logging.error(f"Timeout error deleting room {roomId} at {endpoint}")
+    except Exception as e:
+        bt.logging.error(f"Unexpected error deleting room {roomId}: {e}")
 
 
 async def forward(self):
