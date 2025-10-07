@@ -8,3 +8,4 @@ setuptools>=68
 bittensor
 openai
 python-dotenv
+black

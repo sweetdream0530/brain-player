@@ -111,10 +111,14 @@ async def create_room(self, game_state: GameState):
                 ],
             }
             headers = self.build_signed_headers()
-            async with session.post(endpoint, json=payload, headers=headers, timeout=10) as response:
+            async with session.post(
+                endpoint, json=payload, headers=headers, timeout=10
+            ) as response:
                 if response.status != 200:
                     response_text = await response.text()
-                    bt.logging.error(f"Failed to create new room: HTTP {response.status} - {response_text}")
+                    bt.logging.error(
+                        f"Failed to create new room: HTTP {response.status} - {response_text}"
+                    )
                     return None
                 else:
                     response_text = await response.text()
@@ -198,7 +202,9 @@ async def update_room(self, game_state: GameState, roomId):
                 # "createdAt": "2025-04-07T17:49:16.457Z"
             }
             headers = self.build_signed_headers()
-            async with session.patch(endpoint, json=payload, headers=headers, timeout=10) as response:
+            async with session.patch(
+                endpoint, json=payload, headers=headers, timeout=10
+            ) as response:
                 if response.status != 200:
                     response_text = await response.text()
                     bt.logging.error(
@@ -225,10 +231,14 @@ async def remove_room(self, roomId):
                 "action": "delete_room",
             }
             headers = self.build_signed_headers()
-            async with session.delete(endpoint, headers=headers, timeout=10) as response:
+            async with session.delete(
+                endpoint, headers=headers, timeout=10
+            ) as response:
                 if response.status != 200:
                     response_text = await response.text()
-                    bt.logging.error(f"Failed to delete room: HTTP {response.status} - {response_text}")
+                    bt.logging.error(
+                        f"Failed to delete room: HTTP {response.status} - {response_text}"
+                    )
                 else:
                     bt.logging.info("Room deleted successfully")
     except aiohttp.ClientError as e:
