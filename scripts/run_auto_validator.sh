@@ -169,48 +169,47 @@ check_variable_value_on_github() {
     local response=$(curl -s --max-time 30 "$url" 2>/dev/null)
     local curl_exit_code=$?
     
-    log_debug "GitHub API response: $response"
     if [[ $curl_exit_code -ne 0 ]]; then
-        log_warn "Network error: Failed to connect to GitHub (curl exit code: $curl_exit_code)"
+        log_warn "Network error: Failed to connect to GitHub (curl exit code: $curl_exit_code)" >&2
         return 1
     fi
     
     if [[ -z "$response" ]]; then
-        log_warn "Empty response from GitHub API"
+        log_warn "Empty response from GitHub API" >&2
         return 1
     fi
     
     # Check for API errors
     if echo "$response" | jq -e '.message' >/dev/null 2>&1; then
         local error_msg=$(echo "$response" | jq -r '.message')
-        log_warn "GitHub API error: $error_msg"
+        log_warn "GitHub API error: $error_msg" >&2
         return 1
     fi
     
-    log_debug "Extracting variable value from GitHub response"
     # Extract and decode content
     local content=$(echo "$response" | tr -d '\n' | jq -r '.content' 2>/dev/null)
     
     if [[ "$content" == "null" || -z "$content" ]]; then
-        log_error "File '$file_path' not found in repository"
+        log_error "File '$file_path' not found in repository" >&2
         return 1
     fi
     
     local decoded_content=$(echo "$content" | base64 --decode 2>/dev/null)
     
     if [[ $? -ne 0 ]]; then
-        log_error "Failed to decode base64 content from GitHub"
+        log_error "Failed to decode base64 content from GitHub" >&2
         return 1
     fi
     
-    # Extract variable value
-    local variable_value=$(echo "$decoded_content" | grep "$variable_name" | awk -F '=' '{print $2}' | tr -d ' ')
+    # Extract variable value using improved pattern
+    local variable_value=$(echo "$decoded_content" | grep "^$variable_name[[:space:]]*=" | awk -F '=' '{print $2}' | tr -d ' ')
     
     if [[ -z "$variable_value" ]]; then
-        log_error "Variable '$variable_name' not found in file '$file_path'"
+        log_error "Variable '$variable_name' not found in file '$file_path'" >&2
         return 1
     fi
     
+    # Only output the cleaned version value to stdout
     strip_quotes "$variable_value"
     return 0
 }
@@ -341,15 +340,19 @@ run_monitoring_loop() {
         
         if [ -d "./.git" ]; then
             latest_version=$(check_variable_value_on_github "$GITHUB_REPO" "game/__init__.py" "$VERSION_VAR")
+
+            log_info "Latest version: $latest_version"
+            log_info "Current version: $current_version"
             
             if version_less_than $current_version $latest_version; then
-                log_info "======== New Version Available ========"
-                log_info "Latest version: $latest_version"
-                log_info "Current version: $current_version"
-                log_info "======================================="
-                
                 diff=$(get_version_difference $latest_version $current_version)
                 if [ "$diff" -gt 0 ]; then
+                    
+                    log_info "==================================="
+                    log_info "New version available!!!"
+                    log_info "Version difference: $diff"
+                    log_info "==================================="
+
                     # Create backup before updating
                     backup_path=$(create_backup "$current_version")
                     if [[ $? -ne 0 ]]; then
