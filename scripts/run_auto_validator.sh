@@ -38,7 +38,7 @@ readonly GITHUB_REPO="shiftlayer-llc/brainplay-subnet"
 
 # Dynamically get the current git branch
 get_current_branch() {
-    if [ -d ".git" ]; then
+    if git rev-parse --git-dir >/dev/null 2>&1; then
         git branch --show-current 2>/dev/null || echo "main"
     else
         echo "main"
@@ -354,7 +354,8 @@ run_monitoring_loop() {
     while true; do
         log_info "Checking for updates..."
         
-        if [ -d "./.git" ]; then
+        # Check if we're in a git repository using git command
+        if git rev-parse --git-dir >/dev/null 2>&1; then
             latest_version=$(check_variable_value_on_github "$GITHUB_REPO" "game/__init__.py" "$VERSION_VAR")
 
             log_info "Latest version: $latest_version"
