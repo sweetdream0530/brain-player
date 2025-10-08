@@ -164,7 +164,9 @@ Set up automatic updates that keep your validator current with the latest code:
 
 ### Running Miner
 
-`python neurons/miner.py --wallet.name test_miner_0 --wallet.hotkey h0 --netuid 117 --logging.info --axon.port 10000`
+```bash
+python neurons/miner.py --wallet.name test_miner_0 --wallet.hotkey h0 --netuid 117 --logging.info --axon.port 10000
+```
 or if you're using PM2
 
 ```bash
