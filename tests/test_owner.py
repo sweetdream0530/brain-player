@@ -3,20 +3,26 @@ import bittensor as bt
 from pydantic import BaseModel
 import random
 import asyncio
+
 with open("game/utils/wordlist-eng.txt") as f:
     words = f.readlines()
     # select 25 random words
 words = random.sample(words, 25)
+
+
 class CardType(BaseModel):
     word: str
     color: str | None
     is_revealed: bool
     was_recently_revealed: bool
+
+
 class GameSynapseOutput(BaseModel):
     clue_text: typing.Optional[str] = None
     number: typing.Optional[int] = None
     guesses: typing.Optional[typing.List[str]] = None
     reasoning: typing.Optional[str] = None
+
 
 class GameSynapse(bt.Synapse):
     """
@@ -31,6 +37,7 @@ class GameSynapse(bt.Synapse):
     - cards: List[CardType]
     - output: GameSynapseOutput
     """
+
     your_team: str = None
     your_role: str = None
     remaining_red: int = 0
@@ -39,7 +46,6 @@ class GameSynapse(bt.Synapse):
     your_number: typing.Optional[int] = None
     cards: typing.List[CardType] = None
     output: GameSynapseOutput | None = None
-
 
     def deserialize(self) -> GameSynapseOutput | None:
         """
@@ -59,6 +65,7 @@ class GameSynapse(bt.Synapse):
         """
         return self.output
 
+
 async def forward(uid: int, synapse: GameSynapse, dendrite, metagraph):
     print(synapse)
     responses = await dendrite(
@@ -73,24 +80,36 @@ async def forward(uid: int, synapse: GameSynapse, dendrite, metagraph):
     )
     return responses[0] if responses else None
 
+
 async def main():
     # Example usage of GameSynapse
-    subtensor = bt.subtensor(network = "test")
-    metagraph = subtensor.metagraph(netuid = 335)
-    wallet = bt.wallet(name="codenames-test-owner", hotkey = "default")
-    dendrite = bt.dendrite(wallet = wallet)
+    subtensor = bt.subtensor(network="test")
+    metagraph = subtensor.metagraph(netuid=335)
+    wallet = bt.wallet(name="brainplay-test-owner", hotkey="default")
+    dendrite = bt.dendrite(wallet=wallet)
     game_synapse = GameSynapse(
         your_team="red",
         your_role="spymaster",
         remaining_red=9,
         remaining_blue=8,
-        cards=[CardType(word=word.strip(), color=color, is_revealed=False, was_recently_revealed=False) for word, color in zip(words, ["red"]*9 + ["blue"]*8 + ["bystander"]*7 + ["assassin"])],
+        cards=[
+            CardType(
+                word=word.strip(),
+                color=color,
+                is_revealed=False,
+                was_recently_revealed=False,
+            )
+            for word, color in zip(
+                words, ["red"] * 9 + ["blue"] * 8 + ["bystander"] * 7 + ["assassin"]
+            )
+        ],
         your_clue=None,
-        your_number=None
+        your_number=None,
     )
     response = await forward(2, game_synapse, dendrite, metagraph)
     print(response)
     await dendrite.aclose_session()
+
 
 if __name__ == "__main__":
     asyncio.run(main())

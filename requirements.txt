@@ -5,6 +5,7 @@ pytest>=8
 torch>=2
 numpy>=1
 setuptools>=68
-bittensor==9.0.0rc5
+bittensor
 openai
 python-dotenv
+black

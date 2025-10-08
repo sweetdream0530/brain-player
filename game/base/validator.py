@@ -19,11 +19,14 @@
 
 
 import copy
+import os
 import time
+import json
 import numpy as np
 import asyncio
 import argparse
 import threading
+from datetime import datetime, timezone
 import bittensor as bt
 
 from typing import List, Union
@@ -36,6 +39,11 @@ from game.base.utils.weight_utils import (
 )  # TODO: Replace when bittensor switches to numpy
 from game.mock import MockDendrite
 from game.utils.config import add_validator_args
+from game.validator.score_store import ScoreStore
+from game.validator.scoring_config import (
+    parse_interval_to_seconds,
+    SCORING_INTERVAL,
+)
 
 
 class BaseValidatorNeuron(BaseNeuron):
@@ -66,6 +74,28 @@ class BaseValidatorNeuron(BaseNeuron):
         # Set up initial scoring weights for validation
         bt.logging.info("Building validation weights.")
         self.scores = np.zeros(self.metagraph.n, dtype=np.float32)
+
+        scores_db_path = os.path.join(self.config.neuron.full_path, "scores.db")
+        self.backend_base = "https://backend.shiftlayer.ai"
+        try:
+            if getattr(self.config.subtensor, "network", None) == "test":
+                self.backend_base = "https://dev-backend.shiftlayer.ai"
+        except AttributeError:
+            pass
+        bt.logging.info(f"Using backend: {self.backend_base}")
+        scores_endpoint = f"{self.backend_base}/api/v1/rooms/score"
+        self.score_store = ScoreStore(
+            scores_db_path,
+            backend_url=scores_endpoint,
+            signer=self.build_signed_headers,
+        )
+        self.score_store.init()
+        scoring_interval_text = SCORING_INTERVAL
+        if hasattr(self.config, "scoring") and getattr(
+            self.config.scoring, "interval", None
+        ):
+            scoring_interval_text = self.config.scoring.interval
+        self.scoring_window_seconds = parse_interval_to_seconds(scoring_interval_text)
 
         # Init sync with the network. Updates the metagraph.
         self.sync()
@@ -105,15 +135,12 @@ class BaseValidatorNeuron(BaseNeuron):
                 pass
 
         except Exception as e:
-            bt.logging.error(
-                f"Failed to create Axon initialize with exception: {e}"
-            )
+            bt.logging.error(f"Failed to create Axon initialize with exception: {e}")
             pass
 
     async def concurrent_forward(self):
         coroutines = [
-            self.forward()
-            for _ in range(self.config.neuron.num_concurrent_forwards)
+            self.forward() for _ in range(self.config.neuron.num_concurrent_forwards)
         ]
         await asyncio.gather(*coroutines)
 
@@ -171,7 +198,7 @@ class BaseValidatorNeuron(BaseNeuron):
                 bt.logging.debug(
                     str(print_exception(type(err), err, err.__traceback__))
                 )
-                
+
                 time.sleep(2)
 
     def run_in_background_thread(self):
@@ -197,6 +224,18 @@ class BaseValidatorNeuron(BaseNeuron):
             self.thread.join(5)
             self.is_running = False
             bt.logging.debug("Stopped")
+        if hasattr(self, "score_store"):
+            self.score_store.close()
+
+    def build_signed_headers(self) -> dict:
+        timestamp = int(datetime.now(tz=timezone.utc).timestamp())
+        message = f"<Bytes>{timestamp}</Bytes>"
+        signature = self.wallet.hotkey.sign(message)
+        return {
+            "X-Validator-Hotkey": self.wallet.hotkey.ss58_address,
+            "X-Validator-Signature": signature.hex(),
+            "X-Validator-Timestamp": str(timestamp),
+        }
 
     def __enter__(self):
         self.run_in_background_thread()
@@ -226,6 +265,55 @@ class BaseValidatorNeuron(BaseNeuron):
         """
         Sets the validator weights to the metagraph hotkeys based on the scores it has received from the miners. The weights determine the trust and incentive level the validator assigns to miner nodes on the network.
         """
+
+        if hasattr(self, "score_store"):
+            window_seconds = getattr(
+                self, "scoring_window_seconds", parse_interval_to_seconds("3 days")
+            )
+            since_ts = time.time() - window_seconds
+            hotkey_totals = self.score_store.window_scores_by_hotkey(since_ts)
+            window_scores = np.zeros(self.metagraph.n, dtype=np.float32)
+            for uid, hotkey in enumerate(self.metagraph.hotkeys):
+                window_scores[uid] = float(hotkey_totals.get(hotkey, 0.0))
+
+            ranked_uids = [
+                uid
+                for uid in sorted(
+                    range(len(window_scores)),
+                    key=lambda i: window_scores[i],
+                    reverse=True,
+                )
+                if window_scores[uid] > 0
+            ]
+
+            if not ranked_uids:
+                bt.logging.warning(
+                    "No positive windowed scores available for weight setting; skipping set_weights."
+                )
+                return
+
+            if len(ranked_uids) >= 3:
+                distribution = [0.7, 0.2, 0.1]
+            elif len(ranked_uids) == 2:
+                distribution = [0.7, 0.3]
+            else:
+                distribution = [1.0]
+            distribution = np.array(distribution, dtype=np.float32)
+            assigned_scores = np.zeros_like(window_scores)
+
+            for rank, uid in enumerate(ranked_uids):
+                if rank >= len(distribution):
+                    break
+                assigned_scores[uid] = distribution[rank]
+
+            total_assigned = float(assigned_scores.sum())
+            if total_assigned <= 0:
+                bt.logging.warning(
+                    "Computed distribution has zero total; skipping set_weights."
+                )
+                return
+
+            self.scores = assigned_scores
 
         # Check if self.scores contains any NaN values and log a warning if it does.
         if np.isnan(self.scores).any():
@@ -270,7 +358,7 @@ class BaseValidatorNeuron(BaseNeuron):
         )
         bt.logging.debug("uint_weights", uint_weights)
         bt.logging.debug("uint_uids", uint_uids)
-    
+
         # Set the weights on chain via our subtensor connection.
         result, msg = self.subtensor.set_weights(
             wallet=self.wallet,
@@ -366,9 +454,7 @@ class BaseValidatorNeuron(BaseNeuron):
         # Update scores with rewards produced by this step.
         # shape: [ metagraph.n ]
         alpha: float = self.config.neuron.moving_average_alpha
-        self.scores: np.ndarray = (
-            alpha * scattered_rewards + (1 - alpha) * self.scores
-        )
+        self.scores: np.ndarray = alpha * scattered_rewards + (1 - alpha) * self.scores
         bt.logging.debug(f"Updated moving avg scores: {self.scores}")
 
     def save_state(self):

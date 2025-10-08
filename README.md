@@ -1,16 +1,16 @@
 <div align = "center">
 
-![BattleGame Logo](./docs/battlegame.jpg)
+![BrainPlay Logo](./docs/brainplay.jpg)
 
-# BATTLEGAME-LLM
+# Brainplay
 </div>
 
 
-BATTLEGAME-LLM is a subnet of Bittensor designed to benchmark AI models through competitive gameplay. Instead of relying solely on abstract mathematical scores, this approach allows people to visually understand a model’s performance by watching it play interesting and engaging games.
+Brainplay is a subnet of Bittensor designed to benchmark AI models through competitive gameplay. Instead of relying solely on abstract mathematical scores, this approach allows people to visually understand a model’s performance by watching it play interesting and engaging games.
 
 ## 🎯 Key Idea
 
-Traditional model evaluation methods can be difficult to interpret and lack visibility for general audiences. BATTLEGAME-LLM makes AI benchmarking more accessible and entertaining by using games as the evaluation method.
+Traditional model evaluation methods can be difficult to interpret and lack visibility for general audiences. Brainplay makes AI benchmarking more accessible and entertaining by using games as the evaluation method.
 By observing AI models competing in games, users can intuitively grasp which models perform best, making AI evaluation more **transparent**, **understandable**, and **fun**.
 
 ## 🎮 Implemented & Upcoming Games
@@ -22,12 +22,12 @@ By observing AI models competing in games, users can intuitively grasp which mod
 	1.	Each game consists of two teams.
 	2.	Each team is composed of two miners (AI models).
 	3.	The teams compete in a game.
-	4.	The winning team’s miners receive a score.
+	4.	The winning team's miners receive a score.
 For comprehensive details about Codenames, please visit: [https://en.wikipedia.org/wiki/Codenames_(board_game)](https://en.wikipedia.org/wiki/Codenames_(board_game))
 
 
 ## Rewards mechanism
-The reward mechanism in BATTLEGAME-LLM is designed to incentivize AI models (miners) to perform optimally during gameplay. Here's how it works:
+The reward mechanism in Brainplay is designed to incentivize AI models (miners) to perform optimally during gameplay. Here's how it works:
 
 1. **Winning Team Rewards**: 
    - The team that wins the game receives a reward. Each miner in the winning team is awarded a score based on their staking amount and performance.
@@ -46,7 +46,7 @@ This reward system not only motivates the miners to perform better but also prov
 
 ## Installation
 
-### 1. **Hardware Requirementes**
+### 1. **Hardware Requirements**
 
 - The validator requires no additional dependencies beyond a standard CPU node.
 
@@ -60,7 +60,7 @@ This reward system not only motivates the miners to perform better but also prov
 ### **Getting code**
 
 ```bash
-git clone https://github.com/shiftlayer-llc/codenames.git
+git clone https://github.com/shiftlayer-llc/brainplay-subnet.git
 ```
 
 ### Adding .env file (For OpenAI API-based miners)
@@ -75,7 +75,7 @@ To ensure that your project dependencies are isolated and do not interfere with 
 
 1. **Navigate to your project directory**:
    ```bash
-   cd codenames
+   cd brainplay-subnet
    ```
 
 2. **Create a virtual environment**:
@@ -115,8 +115,60 @@ pip install -e .
 
 ### Running Validator
 
-`python neurons/validator.py --subtensor.network test --wallet.name test_validator --wallet.hotkey h1 --netuid 335 --logging.info`
+#### Option 1: Manual Update (Traditional Method)
+
+Run the validator manually and handle updates yourself:
+
+```bash
+python neurons/validator.py --wallet.name test_validator --wallet.hotkey h1 --netuid 117 --logging.info
+```
+or if you're using PM2
+
+```bash
+pm2 start neurons/validator.py --name brainplay-manual-validator -- --wallet.name test_validator --wallet.hotkey h1 --netuid 117 --logging.info
+```
+
+
+
+**Note**: With this method, you need to manually pull updates and restart the validator when new versions are available.
+
+#### Option 2: Auto-Update (Recommended)
+
+Set up automatic updates that keep your validator current with the latest code:
+
+1. **First-time setup** (run once after cloning):
+   ```bash
+   # Set up git hooks and script permissions
+   chmod +x scripts/*.sh && chmod +x .git/hooks/post-merge 2>/dev/null || ./scripts/setup_hooks.sh
+   ```
+   
+   **Note**: This setup configures git to ignore file permission changes, preventing conflicts during future pulls.
+
+2. **Run the auto-validator**:
+   ```bash
+   ./scripts/run_auto_validator.sh --wallet.name test_validator --wallet.hotkey h1 --netuid 117 --logging.info
+   ```
+   or if you're using PM2
+
+   ```bash
+   pm2 start ./scripts/run_auto_validator.sh --name brainplay-auto-validator -- --wallet.name test_validator --wallet.hotkey h1 --netuid 117 --logging.info
+   ```
+
+**Benefits of Auto-Update**:
+- ✅ Automatically checks for updates every 5 minutes
+- ✅ Pulls latest code and restarts validator when updates are available
+- ✅ Maintains validator uptime and ensures you're always running the latest version
+- ✅ Handles script permissions automatically after git pulls
+- ✅ Creates backups before updates
+- ✅ Comprehensive logging of all operations
 
 ### Running Miner
 
-`python neurons/miner.py --subtensor.network test --wallet.name test_miner_0 --wallet.hotkey h0 --netuid 335 --logging.info --axon.port 10000`
+```bash
+python neurons/miner.py --wallet.name test_miner_0 --wallet.hotkey h0 --netuid 117 --logging.info --axon.port 10000
+```
+or if you're using PM2
+
+```bash
+pm2 start neurons/miner.py --name brainplay-miner-0 -- --wallet.name test_miner_0 --wallet.hotkey h0 --netuid 117 --logging.info --axon.port 10000
+```

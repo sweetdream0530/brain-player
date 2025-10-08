@@ -30,6 +30,7 @@ from game.validator import forward
 
 bt.logging.on()
 
+
 class Validator(BaseValidatorNeuron):
     """
     Your validator neuron class. You should use this class to define your validator's behavior. In particular, you should replace the forward function with your own logic.
@@ -45,7 +46,6 @@ class Validator(BaseValidatorNeuron):
         bt.logging.info("load_state()")
         self.load_state()
         # TODO: upgrade load_state()
-
 
     async def forward(self):
         """

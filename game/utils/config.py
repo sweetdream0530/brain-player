@@ -21,13 +21,12 @@ import subprocess
 import argparse
 import bittensor as bt
 from .logging import setup_events_logger
+from game.validator.scoring_config import SCORING_INTERVAL
 
 
 def is_cuda_available():
     try:
-        output = subprocess.check_output(
-            ["nvidia-smi", "-L"], stderr=subprocess.STDOUT
-        )
+        output = subprocess.check_output(["nvidia-smi", "-L"], stderr=subprocess.STDOUT)
         if "NVIDIA" in output.decode("utf-8"):
             return "cuda"
     except Exception:
@@ -150,7 +149,7 @@ def add_miner_args(cls, parser):
         "--blacklist.force_validator_permit",
         action="store_true",
         help="If set, we will force incoming requests to have a permit.",
-        default=False,
+        default=True,
     )
 
     parser.add_argument(
@@ -176,7 +175,7 @@ def add_miner_args(cls, parser):
     parser.add_argument(
         "--wandb.entity",
         type=str,
-        default="opentensor-dev",
+        default="shiftlayer-brainplay",
         help="Wandb entity to log to.",
     )
 
@@ -227,6 +226,13 @@ def add_validator_args(cls, parser):
     )
 
     parser.add_argument(
+        "--scoring.interval",
+        type=str,
+        default=SCORING_INTERVAL,
+        help="Rolling window to sum validator scores when setting weights (e.g. '3 days').",
+    )
+
+    parser.add_argument(
         "--neuron.axon_off",
         "--axon_off",
         action="store_true",
@@ -247,14 +253,14 @@ def add_validator_args(cls, parser):
         "--wandb.project_name",
         type=str,
         help="The name of the project where you are sending the new run.",
-        default="template-validators",
+        default="brainplay",
     )
 
     parser.add_argument(
         "--wandb.entity",
         type=str,
         help="The name of the project where you are sending the new run.",
-        default="opentensor-dev",
+        default="shiftlayer",
     )
 
 
