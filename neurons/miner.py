@@ -28,8 +28,16 @@ from game.utils.spySysPrompt import spySysPrompt
 from game.utils.opSysPrompt import opSysPrompt
 
 # Bittensor Miner Template:
-from game.protocol import GameSynapse, GameSynapseOutput, PingSynapse
-import openai
+from game.protocol import GameSynapse, GameSynapseOutput, Ping
+
+from openai import OpenAI
+from openai import (
+    AuthenticationError,
+    RateLimitError,
+    APIConnectionError,
+    APIStatusError,
+    APITimeoutError,
+)
 
 # import base miner class which takes care of most of the boilerplate
 from game.base.miner import BaseMinerNeuron
@@ -48,22 +56,60 @@ class Miner(BaseMinerNeuron):
 
     def __init__(self, config=None):
         super(Miner, self).__init__(config=config)
+        if not self.check_openai_key():
+            raise ValueError("Invalid OPENAI_KEY environment variable.")
         self.axon.attach(
             forward_fn=self.pong,
             blacklist_fn=self.blacklist_ping,
         )
 
-    async def pong(self, synapse: PingSynapse) -> PingSynapse:
+    def check_openai_key(self):
+        retries = 3
+        timeout = 5
+        client = OpenAI(timeout=timeout, api_key=os.environ.get("OPENAI_KEY"))
+        last_err = None
+
+        for attempt in range(retries + 1):
+            try:
+                _ = client.responses.create(
+                    model="gpt-4o",
+                    input="api key test",
+                    max_output_tokens=16,
+                )
+                return True
+            except AuthenticationError as e:
+                bt.logging.error(f"AUTH ERROR: {e}")
+                return False
+            except (
+                RateLimitError,
+                APIConnectionError,
+                APITimeoutError,
+                APIStatusError,
+            ) as e:
+                last_err = e
+                if attempt < retries:
+                    time.sleep(1.5 * (attempt + 1))
+                    continue
+                break
+            except Exception as e:  # safety net
+                last_err = e
+                break
+        if last_err:
+            bt.logging.error(f"FAILED: {last_err}")
+            return False
+        return True
+
+    async def pong(self, synapse: Ping) -> Ping:
         """
-        Responds to a PingSynapse with a Pong response, indicating the miner's availability.
+        Responds to a Ping with a Pong response, indicating the miner's availability.
 
         Args:
-            synapse (PingSynapse): The incoming ping synapse from a validator.
+            synapse (Ping): The incoming ping synapse from a validator.
 
         Returns:
-            PingSynapse: The response synapse with the is_available field set to True.
+            Ping: The response synapse with the is_available field set to True.
         """
-        bt.logging.info("💌 Received PingSynapse request")
+        bt.logging.info("💌 Received Ping request")
         synapse.is_available = True
         return synapse
 
@@ -126,7 +172,7 @@ class Miner(BaseMinerNeuron):
 
         async def get_gpt4_response(messages):
             try:
-                client = openai.OpenAI(api_key=os.environ.get("OPENAI_KEY"))
+                client = OpenAI(api_key=os.environ.get("OPENAI_KEY"))
                 response = client.chat.completions.create(
                     model="gpt-4o", messages=messages
                 )
@@ -235,7 +281,7 @@ class Miner(BaseMinerNeuron):
     ) -> typing.Tuple[bool, str]:
         return await self._blacklist(synapse)
 
-    async def blacklist_ping(self, synapse: PingSynapse) -> typing.Tuple[bool, str]:
+    async def blacklist_ping(self, synapse: Ping) -> typing.Tuple[bool, str]:
         return await self._blacklist(synapse)
 
     async def priority(self, synapse: game.protocol.GameSynapse) -> float:
