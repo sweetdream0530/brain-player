@@ -43,30 +43,23 @@ async def ping_uids(dendrite: bt.dendrite, metagraph, uids, timeout=30):
         bt.logging.info(f"Pinging {len(uids)} uids with timeout {timeout}s...")
         responses = await dendrite.forward(
             axons,
-            game.protocol.PingSynapse(),
+            game.protocol.Ping(),
             timeout=timeout,
-            deserialize=False,
+            deserialize=True,
         )
         successful_uids = [
             uid
             for uid, response in zip(uids, responses)
-            if response.dendrite.status_code == 200
-        ]
-        failed_uids = [
-            uid
-            for uid, response in zip(uids, responses)
-            if response.dendrite.status_code != 200
+            if response.is_available and response.version == game.__version__
         ]
     except Exception as e:
         bt.logging.error(f"Dendrite ping failed: {e}")
         traceback.print_exc()
         successful_uids = []
-        failed_uids = uids
 
     bt.logging.info(f"ping() successful uids: {[int(uid) for uid in successful_uids]}")
-    bt.logging.debug(f"ping() failed uids    : {failed_uids}")
 
-    return successful_uids, failed_uids
+    return successful_uids
 
 
 async def get_query_api_nodes(dendrite, metagraph, n=0.1, timeout=30):
@@ -88,7 +81,7 @@ async def get_query_api_nodes(dendrite, metagraph, n=0.1, timeout=30):
     ]
     top_uids = np.where(metagraph.S > np.quantile(metagraph.S, 1 - n))[0].tolist()
     init_query_uids = set(top_uids).intersection(set(vtrust_uids))
-    query_uids, _ = await ping_uids(
+    query_uids = await ping_uids(
         dendrite, metagraph, list(init_query_uids), timeout=timeout
     )
     bt.logging.debug(

@@ -18,13 +18,15 @@
 
 import typing
 import bittensor as bt
-from game.utils.game import GameState, Role, TeamColor, CardColor, CardType
+from game.utils.game import CardType
 from pydantic import BaseModel, Field
+from game import __version__
 
 
-class PingSynapse(bt.Synapse):
+class Ping(bt.Synapse):
     """Lightweight ping used by validators to discover available miners."""
 
+    version: str = __version__
     is_available: bool = False
 
 

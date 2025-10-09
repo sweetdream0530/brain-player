@@ -41,7 +41,7 @@ async def get_random_uids(self, k: int, exclude: List[int] = None) -> np.ndarray
     """
     candidate_uids = []
     avail_uids = []
-    successful_uids, failed_uids = await ping_uids(
+    successful_uids = await ping_uids(
         self.dendrite, self.metagraph, self.metagraph.uids, 30
     )
     for uid in successful_uids:
