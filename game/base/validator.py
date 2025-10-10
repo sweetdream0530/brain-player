@@ -76,6 +76,21 @@ class BaseValidatorNeuron(BaseNeuron):
         self.scores = np.zeros(self.metagraph.n, dtype=np.float32)
 
         scores_db_path = os.path.join(self.config.neuron.full_path, "scores.db")
+        if getattr(self.config, "clear_db", False):
+            if os.path.exists(scores_db_path):
+                try:
+                    os.remove(scores_db_path)
+                    bt.logging.info(
+                        f"Removed existing score database at {scores_db_path}"
+                    )
+                except OSError as err:
+                    bt.logging.error(
+                        f"Failed to remove existing score database at {scores_db_path}: {err}"
+                    )
+            else:
+                bt.logging.info(
+                    "Score database flag set but no existing file found to remove."
+                )
         self.backend_base = "https://backend.shiftlayer.ai"
         try:
             if getattr(self.config.subtensor, "network", None) == "test":

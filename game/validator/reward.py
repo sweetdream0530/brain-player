@@ -56,8 +56,10 @@ def get_rewards(
         rewards = np.array([1.0, 1.0, 0.0, 0.0])
         if end_reason == "invalid_clue":
             rewards[2] = -1.0
-    else:
+    elif winner == "blue":
         rewards = np.array([0.0, 0.0, 1.0, 1.0])
         if end_reason == "invalid_clue":
             rewards[0] = -1.0
+    else:
+        rewards = np.array([0.0, 0.0, 0.0, 0.0])
     return rewards
