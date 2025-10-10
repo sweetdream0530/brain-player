@@ -184,6 +184,13 @@ def add_validator_args(cls, parser):
     """Add validator specific arguments to the parser."""
 
     parser.add_argument(
+        "--clear_db",
+        action="store_true",
+        help="Remove the validator score database before startup.",
+        default=True,
+    )
+
+    parser.add_argument(
         "--neuron.name",
         type=str,
         help="Trials for this neuron go in neuron.root / (wallet_cold - wallet_hot) / neuron.name. ",
