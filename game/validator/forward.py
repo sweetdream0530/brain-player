@@ -553,7 +553,7 @@ async def forward(self):
     # # Adjust the scores based on responses from miners.
     rewards = get_rewards(
         self,
-        winner=game_state.gameWinner,
+        winner=game_state.gameWinner.value if game_state.gameWinner else None,
         red_team=red_team,
         blue_team=blue_team,
         end_reason=end_reason,
