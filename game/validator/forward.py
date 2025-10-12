@@ -557,6 +557,8 @@ async def forward(self):
         red_team=red_team,
         blue_team=blue_team,
         end_reason=end_reason,
+        current_team=game_state.currentTeam,
+        current_role=game_state.currentRole,
     )
 
     bt.logging.info(f"Scored responses: {rewards}")
