@@ -354,6 +354,7 @@ class BaseValidatorNeuron(BaseNeuron):
 
                 self.scores = assigned_scores
 
+            bt.logging.info(f"Assigned scores: {self.scores}")
         # Check if self.scores contains any NaN values and log a warning if it does.
         if np.isnan(self.scores).any():
             bt.logging.warning(
@@ -480,21 +481,15 @@ class BaseValidatorNeuron(BaseNeuron):
                 f"cannot be broadcast to uids array of shape {uids_array.shape}"
             )
 
-        # * Adjust rewards by the stake amount of each uid.
-        stakes = np.array([self.metagraph.stake[uid] for uid in uids_array])
-        adjusted_rewards = rewards * stakes
-
         # Compute forward pass rewards, assumes uids are mutually exclusive.
         # shape: [ metagraph.n ]
         scattered_rewards: np.ndarray = np.zeros_like(self.scores)
-        scattered_rewards[uids_array] = adjusted_rewards
-        bt.logging.debug(f"Scattered rewards: {adjusted_rewards}")
+        scattered_rewards[uids_array] = rewards
 
         # Update scores with rewards produced by this step.
         # shape: [ metagraph.n ]
         alpha: float = self.config.neuron.moving_average_alpha
         self.scores: np.ndarray = alpha * scattered_rewards + (1 - alpha) * self.scores
-        bt.logging.debug(f"Updated moving avg scores: {self.scores}")
 
     def save_state(self):
         """Saves the state of the validator to a file."""
