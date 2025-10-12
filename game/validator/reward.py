@@ -70,7 +70,7 @@ def get_rewards(
         ("blue", "spymaster"): 2,
         ("blue", "operative"): 3,
     }
-    current_index = team_role_to_index.get((current_team, current_role))
+    current_index = team_role_to_index.get((current_team.value, current_role.value))
     if winner == "red":
         rewards = np.array([1.0, 1.0, 0.0, 0.0])
     elif winner == "blue":
@@ -80,5 +80,7 @@ def get_rewards(
     if end_reason in penalties:
         rewards = rewards * scale[end_reason]
         rewards[current_index] += penalties[end_reason]
-
+    bt.logging.info(
+        f"rewards: {rewards}, reason: {end_reason}, current_index: {current_index}, current_team: {current_team}, current_role: {current_role}"
+    )
     return rewards
