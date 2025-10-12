@@ -307,28 +307,52 @@ class BaseValidatorNeuron(BaseNeuron):
                 )
                 return
 
-            if len(ranked_uids) >= 3:
-                distribution = [0.7, 0.2, 0.1]
-            elif len(ranked_uids) == 2:
-                distribution = [0.7, 0.3]
-            else:
-                distribution = [1.0]
-            distribution = np.array(distribution, dtype=np.float32)
             assigned_scores = np.zeros_like(window_scores)
+            top_count = min(3, len(ranked_uids))
+            top_uids = ranked_uids[:top_count]
+            other_uids = ranked_uids[top_count:]
 
-            for rank, uid in enumerate(ranked_uids):
-                if rank >= len(distribution):
-                    break
-                assigned_scores[uid] = distribution[rank]
+            if top_count == 1:
+                assigned_scores[top_uids[0]] = 1.0
+                self.scores = assigned_scores
+                # No other players to allocate to.
+                # Proceed with standard normalization below.
+            else:
+                if top_count == 2:
+                    top_distribution = [0.85, 0.15]
+                    remaining_pool = 0.0
+                else:
+                    top_distribution = [0.7, 0.2, 0.05]
+                    remaining_pool = 0.05
 
-            total_assigned = float(assigned_scores.sum())
-            if total_assigned <= 0:
-                bt.logging.warning(
-                    "Computed distribution has zero total; skipping set_weights."
-                )
-                return
+                for rank, uid in enumerate(top_uids):
+                    assigned_scores[uid] = top_distribution[rank]
 
-            self.scores = assigned_scores
+                if other_uids and remaining_pool > 0:
+                    other_totals = np.array(
+                        [window_scores[uid] for uid in other_uids], dtype=np.float32
+                    )
+                    others_sum = float(other_totals.sum())
+                    if others_sum > 0:
+                        shares = remaining_pool * (other_totals / others_sum)
+                    else:
+                        shares = np.full_like(
+                            other_totals, remaining_pool / len(other_uids)
+                        )
+                    for uid, share in zip(other_uids, shares):
+                        assigned_scores[uid] = float(share)
+
+                total_assigned = float(assigned_scores.sum())
+                if total_assigned <= 0:
+                    bt.logging.warning(
+                        "Computed distribution has zero total; skipping set_weights."
+                    )
+                    return
+
+                if total_assigned != 1.0:
+                    assigned_scores /= total_assigned
+
+                self.scores = assigned_scores
 
         # Check if self.scores contains any NaN values and log a warning if it does.
         if np.isnan(self.scores).any():

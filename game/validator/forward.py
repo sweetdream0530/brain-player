@@ -544,7 +544,7 @@ async def forward(self):
         game_step += 1
 
         await update_room(self, game_state, roomId)
-        time.sleep(2)
+        # time.sleep(2)
     # * Game over
     ended_at = time.time()
     winner_value = (
@@ -557,6 +557,8 @@ async def forward(self):
         red_team=red_team,
         blue_team=blue_team,
         end_reason=end_reason,
+        current_team=game_state.currentTeam,
+        current_role=game_state.currentRole,
     )
 
     bt.logging.info(f"Scored responses: {rewards}")
@@ -590,4 +592,4 @@ async def forward(self):
     except Exception as err:  # noqa: BLE001
         bt.logging.error(f"Failed to persist game score {roomId}: {err}")
 
-    time.sleep(10)
+    time.sleep(1)

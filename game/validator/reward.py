@@ -39,7 +39,13 @@ import bittensor as bt
 
 
 def get_rewards(
-    self, winner, red_team: Dict, blue_team: Dict, end_reason: str = ""
+    self,
+    winner,
+    red_team: Dict,
+    blue_team: Dict,
+    end_reason: str,
+    current_team,
+    current_role,
 ) -> np.ndarray:
     """
     Calculates and returns an array of rewards based on the winning team.
@@ -52,14 +58,27 @@ def get_rewards(
     Returns:
     - np.ndarray: An array of rewards for the team members based on the game outcome.
     """
+    penalties = {"invalid_clue": -0.5, "no_response": -1.0, "assassin": -0.5}
+    scale = {
+        "invalid_clue": 0.5,
+        "no_response": 0.0,  # If no response, no one gets points
+        "assassin": 0.8,
+    }
+    team_role_to_index = {
+        ("red", "spymaster"): 0,
+        ("red", "operative"): 1,
+        ("blue", "spymaster"): 2,
+        ("blue", "operative"): 3,
+    }
+    current_index = team_role_to_index.get((current_team, current_role))
     if winner == "red":
         rewards = np.array([1.0, 1.0, 0.0, 0.0])
-        if end_reason == "invalid_clue":
-            rewards[2] = -1.0
     elif winner == "blue":
         rewards = np.array([0.0, 0.0, 1.0, 1.0])
-        if end_reason == "invalid_clue":
-            rewards[0] = -1.0
     else:
         rewards = np.array([0.0, 0.0, 0.0, 0.0])
+    if end_reason in penalties:
+        rewards = rewards * scale[end_reason]
+        rewards[current_index] += penalties[end_reason]
+
     return rewards

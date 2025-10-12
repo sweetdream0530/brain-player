@@ -266,9 +266,9 @@ class Miner(BaseMinerNeuron):
                 )
                 return True, "Non-validator hotkey"
         # TODO: enable this in mainnet
-        # stake = self.metagraph.S[uid].item()
-        # if stake < self.config.blacklist.minimum_stake_requirement:
-        #     return True, "pubkey stake below min_allowed_stake"
+        stake = self.metagraph.S[uid].item()
+        if stake < self.config.blacklist.minimum_stake_requirement:
+            return True, "pubkey stake below min_allowed_stake"
 
         bt.logging.debug(
             f"Not Blacklisting recognized hotkey {synapse.dendrite.hotkey}"
