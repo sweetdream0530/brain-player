@@ -373,7 +373,7 @@ async def forward(self):
             # All responses have the deserialize function called on them before returning.
             # You are encouraged to define your own deserialization function.
             deserialize=True,
-            timeout=10,  # TODO: Update timeout limit
+            timeout=15,  # TODO: Update timeout limit
         )
         # TODO: handle response timeout
         if len(responses) == 0 or responses[0] is None:
