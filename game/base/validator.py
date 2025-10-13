@@ -291,19 +291,15 @@ class BaseValidatorNeuron(BaseNeuron):
             for uid, hotkey in enumerate(self.metagraph.hotkeys):
                 window_scores[uid] = float(hotkey_totals.get(hotkey, 0.0))
 
-            ranked_uids = [
-                uid
-                for uid in sorted(
-                    range(len(window_scores)),
-                    key=lambda i: window_scores[i],
-                    reverse=True,
-                )
-                if window_scores[uid] > 0
-            ]
+            ranked_uids = sorted(
+                range(len(window_scores)),
+                key=lambda i: window_scores[i],
+                reverse=True,
+            )
 
             if not ranked_uids:
                 bt.logging.warning(
-                    "No positive windowed scores available for weight setting; skipping set_weights."
+                    "No windowed scores available for weight setting; skipping set_weights."
                 )
                 return
 
@@ -322,8 +318,8 @@ class BaseValidatorNeuron(BaseNeuron):
                     top_distribution = [0.85, 0.15]
                     remaining_pool = 0.0
                 else:
-                    top_distribution = [0.7, 0.2, 0.05]
-                    remaining_pool = 0.05
+                    top_distribution = [0.7, 0.15, 0.05]
+                    remaining_pool = 0.1
 
                 for rank, uid in enumerate(top_uids):
                     assigned_scores[uid] = top_distribution[rank]
@@ -332,6 +328,11 @@ class BaseValidatorNeuron(BaseNeuron):
                     other_totals = np.array(
                         [window_scores[uid] for uid in other_uids], dtype=np.float32
                     )
+                    if other_totals.size:
+                        min_val = float(other_totals.min())
+                        if min_val < 0:
+                            other_totals = other_totals - min_val
+
                     others_sum = float(other_totals.sum())
                     if others_sum > 0:
                         shares = remaining_pool * (other_totals / others_sum)
