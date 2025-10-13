@@ -286,20 +286,31 @@ class BaseValidatorNeuron(BaseNeuron):
                 self, "scoring_window_seconds", parse_interval_to_seconds("3 days")
             )
             since_ts = time.time() - window_seconds
+            games_in_window = self.score_store.games_in_window(since_ts)
             hotkey_totals = self.score_store.window_scores_by_hotkey(since_ts)
             window_scores = np.zeros(self.metagraph.n, dtype=np.float32)
             for uid, hotkey in enumerate(self.metagraph.hotkeys):
                 window_scores[uid] = float(hotkey_totals.get(hotkey, 0.0))
 
-            ranked_uids = sorted(
-                range(len(window_scores)),
-                key=lambda i: window_scores[i],
-                reverse=True,
-            )
+            ranked_uids = [
+                uid
+                for uid in sorted(
+                    range(len(window_scores)),
+                    key=lambda i: window_scores[i],
+                    reverse=True,
+                )
+                if window_scores[uid] > 0
+            ]
+
+            if games_in_window < 60:
+                bt.logging.warning(
+                    f"Not enough games in scoring window ({games_in_window} < 60); skipping set_weights."
+                )
+                return
 
             if not ranked_uids:
                 bt.logging.warning(
-                    "No windowed scores available for weight setting; skipping set_weights."
+                    "No positive windowed scores available for weight setting; skipping set_weights."
                 )
                 return
 
@@ -328,11 +339,6 @@ class BaseValidatorNeuron(BaseNeuron):
                     other_totals = np.array(
                         [window_scores[uid] for uid in other_uids], dtype=np.float32
                     )
-                    if other_totals.size:
-                        min_val = float(other_totals.min())
-                        if min_val < 0:
-                            other_totals = other_totals - min_val
-
                     others_sum = float(other_totals.sum())
                     if others_sum > 0:
                         shares = remaining_pool * (other_totals / others_sum)

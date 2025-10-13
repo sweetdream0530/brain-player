@@ -177,6 +177,16 @@ class ScoreStore:
             cur.close()
         return dict(totals)
 
+    def games_in_window(self, since_ts: float) -> int:
+        with self._lock:
+            cur = self.conn.cursor()
+            cur.execute(
+                "SELECT COUNT(*) FROM scores WHERE ended_at >= ?", (int(since_ts),)
+            )
+            (count,) = cur.fetchone()
+            cur.close()
+        return int(count)
+
     def mark_synced(self, room_id: str) -> None:
         with self._lock:
             cur = self.conn.cursor()
