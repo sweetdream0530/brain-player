@@ -38,7 +38,7 @@ class ScoreStore:
                     self._conn.execute("PRAGMA synchronous=NORMAL;")
         return self._conn
 
-    def init(self):
+    def init(self, hotkeys):
         cur = self.conn.cursor()
         cur.execute(
             """
@@ -62,6 +62,32 @@ class ScoreStore:
             """
         )
         cur.close()
+        with self._lock:
+            cur = self.conn.cursor()
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS selection_events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    hotkey TEXT NOT NULL,
+                    uid INTEGER NOT NULL,
+                    ts INTEGER NOT NULL
+                );
+                """
+            )
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS idx_selection_events_hotkey ON selection_events(hotkey);"
+            )
+            # Add all hotkeys to selection_events to avoid empty counts
+            for uid, hotkey in enumerate(hotkeys):
+                cur.execute(
+                    """
+                    INSERT INTO selection_events(hotkey, uid, ts)
+                    VALUES(?, ?, ?)
+                    """,
+                    (hotkey, uid, int(time.time())),
+                )
+
+            cur.close()
 
     def record_game(
         self,
@@ -176,6 +202,31 @@ class ScoreStore:
                     totals[bo] += float(score_bo or 0.0)
             cur.close()
         return dict(totals)
+
+    def increment_selection_count(self, hotkey: str, uid: int) -> None:
+        if not hotkey:
+            return
+        with self._lock:
+            cur = self.conn.cursor()
+            cur.execute(
+                """
+                INSERT INTO selection_events(hotkey, uid, ts)
+                VALUES(?, ?, ?)
+                """,
+                (hotkey, uid, int(time.time())),
+            )
+            cur.close()
+
+    def selection_counts_since(self, since_ts: float) -> Dict[str, int]:
+        with self._lock:
+            cur = self.conn.cursor()
+            cur.execute(
+                "SELECT hotkey, COUNT(*) FROM selection_events WHERE ts >= ? GROUP BY hotkey",
+                (int(since_ts),),
+            )
+            rows = cur.fetchall()
+            cur.close()
+        return {hotkey: int(count) for hotkey, count in rows}
 
     def games_in_window(self, since_ts: float) -> int:
         with self._lock:

@@ -104,7 +104,7 @@ class BaseValidatorNeuron(BaseNeuron):
             backend_url=scores_endpoint,
             signer=self.build_signed_headers,
         )
-        self.score_store.init()
+        self.score_store.init(self.metagraph.hotkeys)
         scoring_interval_text = SCORING_INTERVAL
         if hasattr(self.config, "scoring") and getattr(
             self.config.scoring, "interval", None
