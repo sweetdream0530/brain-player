@@ -34,10 +34,6 @@ async def get_random_uids(self, k: int, exclude: List[int] = None) -> np.ndarray
         selection_counts = {}
         min_selection_count = 0
 
-    print(
-        f"Selection counts: {selection_counts}, min selection count: {min_selection_count}"
-    )
-
     available_pool = [
         int(uid) for uid in self.metagraph.uids if int(uid) not in exclude_set
     ]
@@ -51,9 +47,6 @@ async def get_random_uids(self, k: int, exclude: List[int] = None) -> np.ndarray
 
         hotkey = self.metagraph.axons[uid].hotkey
         current_count = selection_counts.get(hotkey, min_selection_count)
-        bt.logging.info(
-            f"UID {uid} with {current_count} and min selection count {min_selection_count}"
-        )
 
         if current_count > min_selection_count:
             continue
