@@ -326,11 +326,11 @@ class BaseValidatorNeuron(BaseNeuron):
                 # Proceed with standard normalization below.
             else:
                 if top_count == 2:
-                    top_distribution = [0.85, 0.15]
+                    top_distribution = [0.7, 0.3]
                     remaining_pool = 0.0
                 else:
-                    top_distribution = [0.7, 0.15, 0.05]
-                    remaining_pool = 0.1
+                    top_distribution = [0.5, 0.25, 0.125]
+                    remaining_pool = 0.125
 
                 for rank, uid in enumerate(top_uids):
                     assigned_scores[uid] = top_distribution[rank]
@@ -359,7 +359,26 @@ class BaseValidatorNeuron(BaseNeuron):
                 if total_assigned != 1.0:
                     assigned_scores /= total_assigned
 
-                self.scores = assigned_scores
+                # Adjust weights by stake rank.
+                stakes = np.array(
+                    [
+                        self.metagraph.alpha_stake[uid]
+                        for uid in range(self.metagraph.n)
+                    ],
+                    dtype=np.float64,
+                )
+                stake_ranks = np.argsort(np.argsort(-stakes)) + 1  # 1-based ranks
+                rank_weight = 1 + 1 / stake_ranks
+                rank_weight = rank_weight / rank_weight.max()
+
+                adjusted_scores = assigned_scores * rank_weight
+                total_adjusted = float(adjusted_scores.sum())
+                if total_adjusted > 0:
+                    adjusted_scores /= total_adjusted
+                else:
+                    adjusted_scores = assigned_scores
+
+                self.scores = adjusted_scores
 
             bt.logging.info(f"Assigned scores: {self.scores}")
         # Check if self.scores contains any NaN values and log a warning if it does.
