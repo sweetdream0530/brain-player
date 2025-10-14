@@ -1,67 +1,85 @@
 import random
+import time
 import bittensor as bt
 from game.api.get_query_axons import ping_uids
 import numpy as np
 from typing import List
 
 
-def check_uid_availability(
-    metagraph: "bt.metagraph.Metagraph", uid: int, vpermit_tao_limit: int
-) -> bool:
-    """Check if uid is available. The UID should be available if it is serving and has less than vpermit_tao_limit stake
-    Args:
-        metagraph (:obj: bt.metagraph.Metagraph): Metagraph object
-        uid (int): uid to be checked
-        vpermit_tao_limit (int): Validator permit tao limit
-    Returns:
-        bool: True if uid is available, False otherwise
-    """
-    # Filter non serving axons.
-    # ! TODO: Check if the axon is serving or not
-    if not metagraph.axons[uid].is_serving:
-        return False
-    # Filter validator permit > 1024 stake.
-    # TODO: Enable validator be miner
-    # if metagraph.validator_permit[uid]:
-    #     if metagraph.S[uid] > vpermit_tao_limit:
-    #         return False
-    # Available otherwise.
-    return True
-
-
 async def get_random_uids(self, k: int, exclude: List[int] = None) -> np.ndarray:
-    """Returns k available random uids from the metagraph.
-    Args:
-        k (int): Number of uids to return.
-        exclude (List[int]): List of uids to exclude from the random sampling.
-    Returns:
-        uids (np.ndarray): Randomly sampled available uids.
-    Notes:
-        If `k` is larger than the number of available `uids`, set `k` to the number of available `uids`.
-    """
-    candidate_uids = []
-    avail_uids = []
-    successful_uids = await ping_uids(
-        self.dendrite, self.metagraph, self.metagraph.uids, 30
-    )
-    for uid in successful_uids:
-        uid_is_available = check_uid_availability(
-            self.metagraph, uid, self.config.neuron.vpermit_tao_limit
-        )
-        uid_is_not_excluded = exclude is None or uid not in exclude
+    """Returns up to ``k`` available uids following selection-count and score rules."""
 
-        if uid_is_available:
-            avail_uids.append(uid)
-            if uid_is_not_excluded:
-                candidate_uids.append(uid)
-    # If k is larger than the number of available uids, set k to the number of available uids.
-    k = min(k, len(avail_uids))
-    # Check if candidate_uids contain enough for querying, if not grab all avaliable uids
-    available_uids = candidate_uids
-    if len(candidate_uids) < k:
-        available_uids += random.sample(
-            [uid for uid in avail_uids if uid not in candidate_uids],
-            k - len(candidate_uids),
+    exclude_set = {int(uid) for uid in (exclude or [])}
+
+    successful_uids = await ping_uids(
+        self.dendrite, self.metagraph, self.metagraph.uids, timeout=30
+    )
+    successful_set = {int(uid) for uid in successful_uids}
+
+    window_seconds = self.scoring_window_seconds
+    window_scores = {}
+    selection_counts = {}
+    min_selection_count = 0
+    try:
+        since = time.time() - float(window_seconds)
+        window_scores = self.score_store.window_scores_by_hotkey(since)
+        selection_counts = self.score_store.selection_counts_since(since)
+        if selection_counts:
+            min_selection_count = min(selection_counts.values())
+        else:
+            min_selection_count = 0
+    except Exception as err:  # noqa: BLE001
+        bt.logging.error(f"Failed to fetch window scores: {err}")
+        window_scores = {}
+        selection_counts = {}
+        min_selection_count = 0
+
+    available_pool = [
+        int(uid) for uid in self.metagraph.uids if int(uid) not in exclude_set
+    ]
+
+    random.shuffle(available_pool)
+    selected: List[int] = []
+
+    for uid in available_pool:
+        if len(selected) >= k:
+            break
+
+        hotkey = self.metagraph.axons[uid].hotkey
+        current_count = selection_counts.get(hotkey, min_selection_count)
+
+        if current_count > min_selection_count:
+            continue
+
+        try:
+            self.score_store.increment_selection_count(hotkey, uid)
+            selection_counts[hotkey] = current_count + 1
+            if selection_counts:
+                min_selection_count = min(
+                    selection_counts.values()
+                )  # Update min_selection_count
+        except Exception as err:  # noqa: BLE001
+            bt.logging.error(f"Failed to increment selection count for {hotkey}: {err}")
+
+        if uid not in successful_set:
+            continue
+
+        score = float(window_scores.get(hotkey, 0.0))
+
+        # Filter out very low score miners
+        if score < -2.0:
+            bt.logging.warning(f"UID {uid} has low score: {score}")
+            continue
+
+        selected.append(uid)
+
+    if len(selected) < k:
+        bt.logging.warning(
+            f"Only selected {len(selected)} miners out of requested {k}."
         )
-    uids = np.array(random.sample(available_uids, k))
-    return uids
+    else:
+        bt.logging.info(
+            f"Selected miners: {selected}, selected counts: {[selection_counts.get(self.metagraph.axons[uid].hotkey, 0) for uid in selected]}"
+        )
+
+    return np.array(selected, dtype=np.int32)

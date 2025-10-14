@@ -58,7 +58,7 @@ def get_rewards(
     Returns:
     - np.ndarray: An array of rewards for the team members based on the game outcome.
     """
-    penalties = {"invalid_clue": -0.5, "no_response": -1.0, "assassin": -0.5}
+    penalties = {"invalid_clue": -0.5, "no_response": -1.0, "assassin": -0.2}
     scale = {
         "invalid_clue": 0.5,
         "no_response": 0.0,  # If no response, no one gets points

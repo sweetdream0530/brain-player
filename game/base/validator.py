@@ -104,7 +104,7 @@ class BaseValidatorNeuron(BaseNeuron):
             backend_url=scores_endpoint,
             signer=self.build_signed_headers,
         )
-        self.score_store.init()
+        self.score_store.init(self.metagraph.hotkeys)
         scoring_interval_text = SCORING_INTERVAL
         if hasattr(self.config, "scoring") and getattr(
             self.config.scoring, "interval", None
@@ -286,20 +286,31 @@ class BaseValidatorNeuron(BaseNeuron):
                 self, "scoring_window_seconds", parse_interval_to_seconds("3 days")
             )
             since_ts = time.time() - window_seconds
+            games_in_window = self.score_store.games_in_window(since_ts)
             hotkey_totals = self.score_store.window_scores_by_hotkey(since_ts)
             window_scores = np.zeros(self.metagraph.n, dtype=np.float32)
             for uid, hotkey in enumerate(self.metagraph.hotkeys):
                 window_scores[uid] = float(hotkey_totals.get(hotkey, 0.0))
 
-            ranked_uids = sorted(
-                range(len(window_scores)),
-                key=lambda i: window_scores[i],
-                reverse=True,
-            )
+            ranked_uids = [
+                uid
+                for uid in sorted(
+                    range(len(window_scores)),
+                    key=lambda i: window_scores[i],
+                    reverse=True,
+                )
+                if window_scores[uid] > 0
+            ]
+
+            if games_in_window < 60:
+                bt.logging.warning(
+                    f"Not enough games in scoring window ({games_in_window} < 60); skipping set_weights."
+                )
+                return
 
             if not ranked_uids:
                 bt.logging.warning(
-                    "No windowed scores available for weight setting; skipping set_weights."
+                    "No positive windowed scores available for weight setting; skipping set_weights."
                 )
                 return
 
@@ -315,11 +326,11 @@ class BaseValidatorNeuron(BaseNeuron):
                 # Proceed with standard normalization below.
             else:
                 if top_count == 2:
-                    top_distribution = [0.85, 0.15]
+                    top_distribution = [0.7, 0.3]
                     remaining_pool = 0.0
                 else:
-                    top_distribution = [0.7, 0.15, 0.05]
-                    remaining_pool = 0.1
+                    top_distribution = [0.5, 0.25, 0.125]
+                    remaining_pool = 0.125
 
                 for rank, uid in enumerate(top_uids):
                     assigned_scores[uid] = top_distribution[rank]
@@ -328,11 +339,6 @@ class BaseValidatorNeuron(BaseNeuron):
                     other_totals = np.array(
                         [window_scores[uid] for uid in other_uids], dtype=np.float32
                     )
-                    if other_totals.size:
-                        min_val = float(other_totals.min())
-                        if min_val < 0:
-                            other_totals = other_totals - min_val
-
                     others_sum = float(other_totals.sum())
                     if others_sum > 0:
                         shares = remaining_pool * (other_totals / others_sum)
@@ -353,7 +359,26 @@ class BaseValidatorNeuron(BaseNeuron):
                 if total_assigned != 1.0:
                     assigned_scores /= total_assigned
 
-                self.scores = assigned_scores
+                # Adjust weights by stake rank.
+                stakes = np.array(
+                    [
+                        self.metagraph.alpha_stake[uid]
+                        for uid in range(self.metagraph.n)
+                    ],
+                    dtype=np.float64,
+                )
+                stake_ranks = np.argsort(np.argsort(-stakes)) + 1  # 1-based ranks
+                rank_weight = 1 + 1 / stake_ranks
+                rank_weight = rank_weight / rank_weight.max()
+
+                adjusted_scores = assigned_scores * rank_weight
+                total_adjusted = float(adjusted_scores.sum())
+                if total_adjusted > 0:
+                    adjusted_scores /= total_adjusted
+                else:
+                    adjusted_scores = assigned_scores
+
+                self.scores = adjusted_scores
 
             bt.logging.info(f"Assigned scores: {self.scores}")
         # Check if self.scores contains any NaN values and log a warning if it does.
@@ -448,49 +473,6 @@ class BaseValidatorNeuron(BaseNeuron):
 
         # Update the hotkeys.
         self.hotkeys = copy.deepcopy(self.metagraph.hotkeys)
-
-    def update_scores(self, rewards: np.ndarray, uids: List[int]):
-        """Performs exponential moving average on the scores based on the rewards received from the miners, adjusted by stake amount."""
-
-        # Check if rewards contains NaN values.
-        if np.isnan(rewards).any():
-            bt.logging.warning(f"NaN values detected in rewards: {rewards}")
-            # Replace any NaN values in rewards with 0.
-            rewards = np.nan_to_num(rewards, nan=0)
-
-        # Ensure rewards is a numpy array.
-        rewards = np.asarray(rewards)
-
-        # Check if `uids` is already a numpy array and copy it to avoid the warning.
-        if isinstance(uids, np.ndarray):
-            uids_array = uids.copy()
-        else:
-            uids_array = np.array(uids)
-
-        # Handle edge case: If either rewards or uids_array is empty.
-        if rewards.size == 0 or uids_array.size == 0:
-            bt.logging.info(f"rewards: {rewards}, uids_array: {uids_array}")
-            bt.logging.warning(
-                "Either rewards or uids_array is empty. No updates will be performed."
-            )
-            return
-
-        # Check if sizes of rewards and uids_array match.
-        if rewards.size != uids_array.size:
-            raise ValueError(
-                f"Shape mismatch: rewards array of shape {rewards.shape} "
-                f"cannot be broadcast to uids array of shape {uids_array.shape}"
-            )
-
-        # Compute forward pass rewards, assumes uids are mutually exclusive.
-        # shape: [ metagraph.n ]
-        scattered_rewards: np.ndarray = np.zeros_like(self.scores)
-        scattered_rewards[uids_array] = rewards
-
-        # Update scores with rewards produced by this step.
-        # shape: [ metagraph.n ]
-        alpha: float = self.config.neuron.moving_average_alpha
-        self.scores: np.ndarray = alpha * scattered_rewards + (1 - alpha) * self.scores
 
     def save_state(self):
         """Saves the state of the validator to a file."""
