@@ -396,6 +396,23 @@ async def forward(self):
             clue = responses[0].clue_text
             number = responses[0].number
             reasoning = responses[0].reasoning
+            if clue is None or number is None:
+                bt.logging.info(
+                    f"❌ Invalid clue '{clue}' or number '{number}' provided by miner {to_uid}."
+                )
+                # If the clue is invalid, the other team wins
+                game_state.gameWinner = (
+                    TeamColor.RED
+                    if game_state.currentTeam == TeamColor.BLUE
+                    else TeamColor.BLUE
+                )
+                resetAnimations(self, game_state.cards)
+                end_reason = "no_response"
+                bt.logging.info(
+                    f"💀 No clue received! Game over. Winner: {game_state.gameWinner}"
+                )
+                await update_room(self, game_state, roomId)
+                break
             game_state.currentClue = Clue(clueText=clue, number=number)
             bt.logging.info(f"Clue: {clue}, Number: {number}")
             bt.logging.info(f"Reasoning: {reasoning}")
@@ -457,6 +474,24 @@ async def forward(self):
             reasoning = responses[0].reasoning
             bt.logging.info(f"Guessed cards: {guesses}")
             bt.logging.info(f"Reasoning: {reasoning}")
+            if guesses is None:
+                bt.logging.info(
+                    f"❌ Invalid guesses '{guesses}' provided by miner {to_uid}."
+                )
+                # If the guesses is invalid, the other team wins
+                game_state.gameWinner = (
+                    TeamColor.RED
+                    if game_state.currentTeam == TeamColor.BLUE
+                    else TeamColor.BLUE
+                )
+                resetAnimations(self, game_state.cards)
+                end_reason = "no_response"
+                bt.logging.info(
+                    f"💀 No guesses received! Game over. Winner: {game_state.gameWinner}"
+                )
+                await update_room(self, game_state, roomId)
+                break
+
             # * Update the game state
             choose_assasin = False
             for guess in guesses:
