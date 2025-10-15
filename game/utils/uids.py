@@ -19,20 +19,14 @@ async def get_random_uids(self, k: int, exclude: List[int] = None) -> np.ndarray
     window_seconds = self.scoring_window_seconds
     window_scores = {}
     selection_counts = {}
-    min_selection_count = 0
     try:
         since = time.time() - float(window_seconds)
         window_scores = self.score_store.window_scores_by_hotkey(since)
         selection_counts = self.score_store.selection_counts_since(since)
-        if selection_counts:
-            min_selection_count = min(selection_counts.values())
-        else:
-            min_selection_count = 0
     except Exception as err:  # noqa: BLE001
         bt.logging.error(f"Failed to fetch window scores: {err}")
         window_scores = {}
         selection_counts = {}
-        min_selection_count = 0
 
     available_pool = [
         int(uid) for uid in self.metagraph.uids if int(uid) not in exclude_set
@@ -41,37 +35,49 @@ async def get_random_uids(self, k: int, exclude: List[int] = None) -> np.ndarray
     random.shuffle(available_pool)
     selected: List[int] = []
 
-    for uid in available_pool:
-        if len(selected) >= k:
-            break
+    while len(selected) < k and len(available_pool) > 0:
 
-        hotkey = self.metagraph.axons[uid].hotkey
-        current_count = selection_counts.get(hotkey, min_selection_count)
+        available_selection_counts = [
+            selection_counts.get(self.metagraph.axons[uid].hotkey)
+            for uid in available_pool
+            if self.metagraph.axons[uid].hotkey in selection_counts
+        ]
+        min_selection_count = min(
+            available_selection_counts
+        )  # Update min_selection_count
 
-        if current_count > min_selection_count:
-            continue
+        for uid in available_pool:
+            if len(selected) >= k:
+                break
+            if uid in selected:
+                continue
 
-        try:
-            self.score_store.increment_selection_count(hotkey, uid)
-            selection_counts[hotkey] = current_count + 1
-            if selection_counts:
-                min_selection_count = min(
-                    selection_counts.values()
-                )  # Update min_selection_count
-        except Exception as err:  # noqa: BLE001
-            bt.logging.error(f"Failed to increment selection count for {hotkey}: {err}")
+            hotkey = self.metagraph.axons[uid].hotkey
+            current_count = selection_counts.get(hotkey, min_selection_count)
 
-        if uid not in successful_set:
-            continue
+            if current_count > min_selection_count:
+                continue
 
-        score = float(window_scores.get(hotkey, 0.0))
+            try:
+                available_pool.remove(uid)
+                self.score_store.increment_selection_count(hotkey, uid)
+                selection_counts[hotkey] = current_count + 1
+            except Exception as err:  # noqa: BLE001
+                bt.logging.error(
+                    f"Failed to increment selection count for {hotkey}: {err}"
+                )
 
-        # Filter out very low score miners
-        if score < -2.0:
-            bt.logging.warning(f"UID {uid} has low score: {score}")
-            continue
+            if uid not in successful_set:
+                continue
 
-        selected.append(uid)
+            score = float(window_scores.get(hotkey, 0.0))
+
+            # Filter out very low score miners
+            if score < -2.0:
+                bt.logging.warning(f"UID {uid} has low score: {score}")
+                continue
+
+            selected.append(uid)
 
     if len(selected) < k:
         bt.logging.warning(
