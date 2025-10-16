@@ -17,6 +17,21 @@ red, blue, neutral, or black
 the cards
 - The objective of the game is to guess all of your team's cards before the opposing team does
 
+### Game Flow
+
+Turns alternate between teams:
+	1.	Spymaster gives clue.
+	2.	Field operatives guess.
+	3.	Turn ends when:
+	•	Wrong guess
+	•	They decide to stop
+	•	They reach max guesses (number + 1)
+
+Game ends when:
+	•	One team finds all their words → they win
+	•	Someone guesses the assassin → they lose
+  •	If a spymaster gives an invalid clue, the game ends immediately.
+    
 ### Example Turn
 - Teams take turns as follows:
   - Suppose Red goes first
@@ -56,16 +71,25 @@ that contains OCEAN as a substring, like OCEANIC
 - Your clue must be about the meaning of the words. You can't use your clue to talk about the 
 letters in a word. For example, Gland is not a valid clue for ENGLAND
 - You can't tie BUG, BED, and BOW together with a clue like b: 3 nor with a clue like three: 3
-- You must play in English. A foreign word is allowed only if the players in your group would use it 
-in an English sentence. For example, you can't use Apfel as a clue for APPLE and BERLIN, but you can 
-use strudel
+- You must play in English. A foreign word is not allowed.
 - You can't say any form of a visible word on the table. Until BREAK is covered up by a card, you 
 can't say break, broken, breakage, or breakdown
 - You can't say part of a compound word on the table. Until HORSESHOE is covered up, you can't say 
 horse, shoe, unhorsed, or snowshoe
 - You can use ISLAND as a valid clue for ENGLAND because it's about the meaning of the words
-- Proper nouns are allowed as long as they follow the above rules. For example, you can use 
-GEORGE WASHINGTON, JUSTIN BIEBER, or SOUTH DAKOTA as valid clues
+- Compound Words
+	•	Greenhouse (one word) is allowed.
+	•	Pack rat or mother-in-law (multiple words) are not allowed.
+- Proper Names
+	•	Allowed if they follow rules (e.g., "George" or "New York").
+	•	No made-up names (e.g., "Sue Mee" for CHINA + LAWYER).
+- Acronyms & Abbreviations
+	•	"CIA", "UK", "LOL" can be allowed.
+	•	Words like "laser" or "radar" are always okay.
+- Rhymes
+	•	Allow any rhymes that follow the other rules (e.g., snail → mail).
+- Zero clue: e.g., "feathers: 0" → none of your words relate; operatives can guess as many as they like.
+
 
 ### Spymaster Clue-Giving Strategy
 - It's smart to consider risk vs. reward when giving clues
