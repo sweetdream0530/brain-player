@@ -10,6 +10,6 @@ Task:
 - Input: a clue word and the current board words.
 - Output: JSON with fields:
   - "valid": true/false
-  - "reason": short explanation why it is valid or invalid
+  - "reasoning": short explanation why it is valid or invalid
 
 """
