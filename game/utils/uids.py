@@ -36,15 +36,15 @@ async def get_random_uids(self, k: int, exclude: List[int] = None) -> np.ndarray
     selected: List[int] = []
 
     while len(selected) < k and len(available_pool) > 0:
-
         available_selection_counts = [
             selection_counts.get(self.metagraph.axons[uid].hotkey)
             for uid in available_pool
             if self.metagraph.axons[uid].hotkey in selection_counts
         ]
-        min_selection_count = min(
-            available_selection_counts
-        )  # Update min_selection_count
+        if len(available_selection_counts) > 0:
+            min_selection_count = min(available_selection_counts)
+        else:
+            min_selection_count = 0
 
         for uid in available_pool:
             if len(selected) >= k:
@@ -60,6 +60,10 @@ async def get_random_uids(self, k: int, exclude: List[int] = None) -> np.ndarray
 
             try:
                 available_pool.remove(uid)
+            except ValueError:
+                pass
+
+            try:
                 self.score_store.increment_selection_count(hotkey, uid)
                 selection_counts[hotkey] = current_count + 1
             except Exception as err:  # noqa: BLE001
