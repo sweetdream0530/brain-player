@@ -16,9 +16,8 @@
 # OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.
 
+from datetime import datetime
 import time
-import math
-import hashlib as rpccheckhealth
 from math import floor
 from typing import Callable, Any
 from functools import lru_cache, update_wrapper
@@ -110,3 +109,23 @@ def ttl_get_block(self) -> int:
     Note: self here is the miner or validator instance
     """
     return self.subtensor.get_current_block()
+
+
+def parse_ts(value):
+    if value is None:
+        return 0
+    if isinstance(value, (int, float)):
+        return int(value)
+    if isinstance(value, str):
+        value = value.strip()
+        if not value:
+            return 0
+        normalized = value[:-1] + "+00:00" if value.endswith("Z") else value
+        try:
+            return int(datetime.fromisoformat(normalized).timestamp())
+        except ValueError:
+            try:
+                return int(float(normalized))
+            except ValueError as exc:
+                raise ValueError(f"Invalid timestamp: {value}") from exc
+    raise ValueError(f"Unsupported timestamp type: {type(value)}")
