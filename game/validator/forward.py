@@ -22,7 +22,7 @@ import uuid
 import bittensor as bt
 import aiohttp
 import json
-from game.protocol import GameSynapse
+from game.protocol import GameSynapse, GameSynapseOutput
 from game.utils.ruleSysPrompt import ruleSysPrompt
 from game.validator.reward import get_rewards
 from game.utils.uids import get_random_uids
@@ -115,7 +115,7 @@ async def create_room(self, game_state: GameState):
                 endpoint, json=payload, headers=headers, timeout=10
             ) as response:
                 if response.status != 200:
-                    response_text = await response.text()
+                    text = await response.text()
                     bt.logging.error(
                         f"Failed to create new room: HTTP {response.status} - {response_text}"
                     )
@@ -373,9 +373,9 @@ async def forward(self):
             # All responses have the deserialize function called on them before returning.
             # You are encouraged to define your own deserialization function.
             deserialize=True,
-            timeout=15,  # TODO: Update timeout limit
+            timeout=20,
         )
-        # TODO: handle response timeout
+
         if len(responses) == 0 or responses[0] is None:
             game_state.gameWinner = (
                 TeamColor.RED
@@ -396,49 +396,76 @@ async def forward(self):
             clue = responses[0].clue_text
             number = responses[0].number
             reasoning = responses[0].reasoning
-            if clue is None or number is None:
-                bt.logging.info(
-                    f"❌ Invalid clue '{clue}' or number '{number}' provided by miner {to_uid}."
+
+            async def check_valid_clue(clue, number, board_words):
+                if clue is None or number is None:
+                    return False, "Clue or number is None"
+                # * Check if the clue is valid using opponent spymaster
+                if game_state.currentTeam == TeamColor.RED:
+                    to_uid = blue_team["spymaster"]
+                else:
+                    to_uid = red_team["spymaster"]
+                synapse = GameSynapse(
+                    your_team="red" if your_team == "blue" else "blue",
+                    your_role="spymaster",
+                    remaining_red=remaining_red,
+                    remaining_blue=remaining_blue,
+                    your_clue=clue,
+                    your_number=number,
+                    cards=cards,
                 )
-                # If the clue is invalid, the other team wins
-                game_state.gameWinner = (
-                    TeamColor.RED
-                    if game_state.currentTeam == TeamColor.BLUE
-                    else TeamColor.BLUE
+
+                bt.logging.info(f"⏩ Sending clue check query to miner {to_uid}")
+                response: GameSynapseOutput = await self.dendrite(
+                    # Send the query to selected miner axons in the network.
+                    axons=self.metagraph.axons[to_uid],
+                    # Construct a query.
+                    synapse=synapse,
+                    # All responses have the deserialize function called on them before returning.
+                    # You are encouraged to define your own deserialization function.
+                    deserialize=True,
+                    timeout=20,
                 )
-                resetAnimations(self, game_state.cards)
-                end_reason = "no_response"
-                bt.logging.info(
-                    f"💀 No clue received! Game over. Winner: {game_state.gameWinner}"
+                if response and response.clue_validity:
+                    return True, "Clue is valid"
+
+                bt.logging.warning(
+                    f"Miner {to_uid} reported that Clue '{clue}' with number {number} is invalid, reason: {response.reasoning}"
                 )
-                await update_room(self, game_state, roomId)
-                break
+                # * Check if the clue is valid using the ruleSysPrompt
+
+                messages = []
+                messages.append({"role": "system", "content": ruleSysPrompt})
+                messages.append(
+                    {
+                        "role": "user",
+                        "content": f"Clue: {clue}, Number: {number}, Board Words: {board_words}",
+                    }
+                )
+
+                result = client.responses.create(
+                    model="gpt-5",
+                    input=messages,
+                    reasoning={
+                        "effort": "medium"
+                    },  # Optional: control reasoning effort
+                )
+                result_json = json.loads(result.output_text)
+                if result_json["valid"] == False:
+                    return False, result_json["reasoning"]
+                return True, "Clue is valid"
+
             game_state.currentClue = Clue(clueText=clue, number=number)
             bt.logging.info(f"Clue: {clue}, Number: {number}")
             bt.logging.info(f"Reasoning: {reasoning}")
 
-            # * Check if the clue is valid using the ruleSysPrompt
             board_words = [
                 card.word for card in game_state.cards if not card.is_revealed
             ]
-            messages = []
-            messages.append({"role": "system", "content": ruleSysPrompt})
-            messages.append(
-                {
-                    "role": "user",
-                    "content": f"Clue: {clue}, Number: {number}, Board Words: {board_words}",
-                }
-            )
-
-            result = client.responses.create(
-                model="gpt-5",
-                input=messages,
-                reasoning={"effort": "low"},  # Optional: control reasoning effort
-            )
-            result_json = json.loads(result.output_text)
-            if result_json["valid"] == False:
+            valid, reason = await check_valid_clue(clue, number, board_words)
+            if not valid:
                 bt.logging.info(
-                    f"❌ Invalid clue '{clue}' provided by miner {to_uid} for board words {board_words}. Reason: {result_json['reason']}"
+                    f"❌ Invalid clue '{clue}' provided by miner {to_uid} for board words {board_words}. Reason: {reason}"
                 )
                 # If the clue is invalid, the other team wins
                 game_state.gameWinner = (
@@ -620,8 +647,6 @@ async def forward(self):
             reason=end_reason,
         )
         synced = await self.score_store.sync_pending()
-        if synced:
-            bt.logging.info(f"Synced {synced} score rows with backend.")
     except Exception as err:  # noqa: BLE001
         bt.logging.error(f"Failed to persist game score {roomId}: {err}")
 
