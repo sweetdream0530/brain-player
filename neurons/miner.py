@@ -201,6 +201,8 @@ class Miner(BaseMinerNeuron):
         response_dict = json.loads(response_str)
         if "valid" in response_dict:
             valid = response_dict["valid"]
+        else:
+            valid = None
         if "clue" in response_dict:
             clue = response_dict["clue"]
         else:
