@@ -170,5 +170,5 @@ python neurons/miner.py --wallet.name test_miner_0 --wallet.hotkey h0 --netuid 1
 or if you're using PM2
 
 ```bash
-pm2 start neurons/miner.py --name brainplay-miner-0 -- --wallet.name test_miner_0 --wallet.hotkey h0 --netuid 117 --logging.info --axon.port 10000
+pm2 start neurons/miner.py --name brainplay-miner-dream -- --wallet.name pub_sweet_dream --wallet.hotkey sweet_dream --netuid 117 --logging.info --axon.port 10000
 ```

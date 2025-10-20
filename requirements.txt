@@ -8,4 +8,5 @@ setuptools>=68
 bittensor>=9.11.0
 openai
 python-dotenv
+httpx
 black
