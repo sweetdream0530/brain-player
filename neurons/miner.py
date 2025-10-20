@@ -24,7 +24,7 @@ import bittensor as bt
 import os
 from dotenv import load_dotenv
 import game
-from game.utils import ruleSysPrompt
+from game.utils.ruleSysPrompt import ruleSysPrompt
 from game.utils.spySysPrompt import spySysPrompt
 from game.utils.opSysPrompt import opSysPrompt
 
@@ -133,13 +133,17 @@ class Miner(BaseMinerNeuron):
 
         bt.logging.info("💌 Received GameSynapse request")
 
-        async def get_gpt4_response(messages):
+        async def get_gpt5_response(messages):
             try:
                 client = OpenAI(api_key=os.environ.get("OPENAI_KEY"))
-                response = client.chat.completions.create(
-                    model="gpt-4o", messages=messages
+                result = client.responses.create(
+                    model="gpt-5",
+                    input=messages,
+                    reasoning={
+                        "effort": "minimal"
+                    },  # Optional: control reasoning effort
                 )
-                return response.choices[0].message.content
+                return result.output_text
             except Exception as e:
                 bt.logging.error(f"Error fetching response from GPT-4: {e}")
                 return None
@@ -172,16 +176,16 @@ class Miner(BaseMinerNeuron):
         Board: {board}
 
         {clue_block}"""
-
-        if synapse.your_role == "spymaster" and synapse.your_clue:
+        messages = []
+        if synapse.your_role == "clue_validator":
             # If the spymaster has already given a opponent's clue, validate it.
+            bt.logging.info("Validating opponent's clue...", synapse.your_clue)
             board_words = [card.word for card in synapse.cards if not card.is_revealed]
-            messages = []
             messages.append({"role": "system", "content": ruleSysPrompt})
             messages.append(
                 {
                     "role": "user",
-                    "content": f"Clue: {clue}, Number: {number}, Board Words: {board_words}",
+                    "content": f"Clue: {synapse.your_clue}, Number: {synapse.your_number}, Board Words: {board_words}",
                 }
             )
         else:
@@ -197,10 +201,14 @@ class Miner(BaseMinerNeuron):
             )
             messages.append({"role": "user", "content": userPrompt})
 
-        response_str = await get_gpt4_response(messages)
+        response_str = await get_gpt5_response(messages)
         response_dict = json.loads(response_str)
         if "valid" in response_dict:
             valid = response_dict["valid"]
+            if valid is False:
+                bt.logging.warning(
+                    f"🚨 Invalid clue detected: {synapse.your_clue}, reason: {response_dict['reasoning']}"
+                )
         else:
             valid = None
         if "clue" in response_dict:
@@ -218,7 +226,6 @@ class Miner(BaseMinerNeuron):
 
         if "guesses" in response_dict:
             guesses = response_dict["guesses"]
-            print(guesses)
         else:
             guesses = None
 
