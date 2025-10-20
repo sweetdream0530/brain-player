@@ -103,7 +103,7 @@ async def create_room(self, game_state: GameState):
                 "participants": [
                     {
                         "name": p.name,
-                        "hotKey": p.hotkey,
+                        "hotkey": p.hotkey,
                         "team": p.team.value,
                         "role": p.role.value,
                     }
@@ -117,7 +117,7 @@ async def create_room(self, game_state: GameState):
                 if response.status != 200:
                     text = await response.text()
                     bt.logging.error(
-                        f"Failed to create new room: HTTP {response.status} - {response_text}"
+                        f"Failed to create new room: HTTP {response.status} - {text}"
                     )
                     return None
                 else:
@@ -193,7 +193,7 @@ async def update_room(self, game_state: GameState, roomId):
                 "participants": [
                     {
                         "name": p.name,
-                        "hotKey": p.hotkey,
+                        "hotkey": p.hotkey,
                         "team": p.team.value,
                         "role": p.role.value,
                     }
@@ -260,8 +260,9 @@ async def forward(self):
 
     """
     # Select 4 miners randomly and organize 2 teams
-    miner_uids = await get_random_uids(self, k=self.config.neuron.sample_size)
-    miner_uids = list(miner_uids)
+    miner_uids, selected_hotkeys = await get_random_uids(
+        self, k=self.config.neuron.sample_size
+    )
     # Exeption handling when number of miners less than 4
     if len(miner_uids) < 4:
         return
@@ -365,6 +366,7 @@ async def forward(self):
         )
 
         bt.logging.info(f"⏩ Sending query to miner {to_uid}")
+        start_at = time.time()
         responses = await self.dendrite(
             # Send the query to selected miner axons in the network.
             axons=[self.metagraph.axons[to_uid]],
@@ -373,7 +375,10 @@ async def forward(self):
             # All responses have the deserialize function called on them before returning.
             # You are encouraged to define your own deserialization function.
             deserialize=True,
-            timeout=20,
+            timeout=30,
+        )
+        bt.logging.info(
+            f"⏩ Received response from miner {to_uid} in {time.time() - start_at:.2f}s"
         )
 
         if len(responses) == 0 or responses[0] is None:
@@ -407,7 +412,7 @@ async def forward(self):
                     to_uid = red_team["spymaster"]
                 synapse = GameSynapse(
                     your_team="red" if your_team == "blue" else "blue",
-                    your_role="spymaster",
+                    your_role="clue_validator",
                     remaining_red=remaining_red,
                     remaining_blue=remaining_blue,
                     your_clue=clue,
@@ -426,7 +431,7 @@ async def forward(self):
                     deserialize=True,
                     timeout=20,
                 )
-                if response and response.clue_validity:
+                if not response or response.clue_validity:
                     return True, "Clue is valid"
 
                 bt.logging.warning(
@@ -451,11 +456,12 @@ async def forward(self):
                     },  # Optional: control reasoning effort
                 )
                 result_json = json.loads(result.output_text)
+                bt.logging.info(f"Rule System Response: {result_json}")
                 if result_json["valid"] == False:
                     return False, result_json["reasoning"]
                 return True, "Clue is valid"
 
-            game_state.currentClue = Clue(clueText=clue, number=number)
+            bt.logging.info(f"Received clue from miner {to_uid}")
             bt.logging.info(f"Clue: {clue}, Number: {number}")
             bt.logging.info(f"Reasoning: {reasoning}")
 
@@ -463,6 +469,7 @@ async def forward(self):
                 card.word for card in game_state.cards if not card.is_revealed
             ]
             valid, reason = await check_valid_clue(clue, number, board_words)
+
             if not valid:
                 bt.logging.info(
                     f"❌ Invalid clue '{clue}' provided by miner {to_uid} for board words {board_words}. Reason: {reason}"
@@ -481,6 +488,8 @@ async def forward(self):
                 await update_room(self, game_state, roomId)
                 # time.sleep(5)
                 break
+
+            game_state.currentClue = Clue(clueText=clue, number=number)
 
             game_state.chatHistory.append(
                 ChatMessage(
@@ -560,7 +569,7 @@ async def forward(self):
                     resetAnimations(self, game_state.cards)
                     end_reason = "assassin"
                     bt.logging.info(
-                        f"💀 Assassin card found! Game over. Winner: {game_state.gameWinner}"
+                        f"💀 Assassin card '{card.word}' found! Game over. Winner: {game_state.gameWinner}"
                     )
                     await update_room(self, game_state, roomId)
                     # time.sleep(5)
@@ -612,6 +621,17 @@ async def forward(self):
     winner_value = (
         game_state.gameWinner.value if game_state.gameWinner is not None else None
     )
+    if winner_value:
+        # Increase selection count
+        for hotkey in selected_hotkeys:
+            try:
+                uid = self.metagraph.hotkeys.index(hotkey)
+                self.score_store.increment_selection_count(hotkey, uid)
+                bt.logging.info(f"Incremented selection count for {uid}")
+            except Exception as err:  # noqa: BLE001
+                bt.logging.error(
+                    f"Failed to increment selection count for {hotkey}: {err}"
+                )
     # # Adjust the scores based on responses from miners.
     rewards = get_rewards(
         self,
