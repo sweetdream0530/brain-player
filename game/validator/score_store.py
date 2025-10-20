@@ -298,6 +298,16 @@ class ScoreStore:
             return 0
         return int(row[0])
 
+    def latest_scores_all_timestamp(self) -> int:
+        with self._lock:
+            cur = self.conn.cursor()
+            cur.execute("SELECT MAX(ended_at) FROM scores_all")
+            row = cur.fetchone()
+            cur.close()
+        if not row or row[0] is None:
+            return 0
+        return int(row[0])
+
     def games_in_window(self, since_ts: float) -> int:
         with self._lock:
             cur = self.conn.cursor()
