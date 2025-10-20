@@ -434,7 +434,7 @@ class ScoreStore:
                         return
                     self._upsert_scores_all(payload["data"])
                     bt.logging.info(
-                        f"Synced Score: {since_id+payload['meta']['count']} / {payload['meta']['total']}"
+                        f"Synced Score: {params['since_id'] + payload['meta']['count']} / {payload['meta']['total']}"
                     )
                     if not payload["meta"]["has_more"]:
                         break
