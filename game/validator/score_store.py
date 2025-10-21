@@ -233,7 +233,7 @@ class ScoreStore:
                 """
                 SELECT rs, ro, bs, bo,
                        score_rs, score_ro, score_bs, score_bo
-                FROM scores_all
+                FROM scores
                 WHERE ended_at >= ?
                 """,
                 (int(since_ts),),
