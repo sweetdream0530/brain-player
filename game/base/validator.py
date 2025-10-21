@@ -348,6 +348,12 @@ class BaseValidatorNeuron(BaseNeuron):
             )
             return
 
+        if self.subtensor.get_subnet_info(self.config.netuid).blocks_since_epoch < 300:
+            bt.logging.warning(
+                "Not enough blocks in current epoch; skipping set_weights."
+            )
+            return
+
         if not ranked_uids:
             bt.logging.warning(
                 "No positive windowed scores available for weight setting; skipping set_weights."
