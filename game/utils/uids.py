@@ -36,6 +36,7 @@ async def get_random_uids(self, k: int, exclude: List[int] = None) -> np.ndarray
     selected: List[int] = []
     hotkeys_to_increase: List[str] = []  # Hotkeys to increase selection count for
     selected_ips: List[str] = []  # IPs to avoid selecting duplicates
+    selected_coldkeys: List[str] = []  # Coldkeys to avoid selecting duplicates
 
     while len(selected) < k and len(available_pool) > 0:
         available_selection_counts = [
@@ -73,6 +74,12 @@ async def get_random_uids(self, k: int, exclude: List[int] = None) -> np.ndarray
                 )
                 continue
 
+            coldkey = self.metagraph.coldkeys[uid]
+            if coldkey in selected_coldkeys:
+                bt.logging.info(
+                    f"Skipping UID {uid} with coldkey {coldkey} to avoid duplicates. Selected coldkeys: {selected_coldkeys}"
+                )
+
             # Mark hotkey to increase selection count
             hotkeys_to_increase.append(hotkey)
 
@@ -88,6 +95,7 @@ async def get_random_uids(self, k: int, exclude: List[int] = None) -> np.ndarray
 
             selected.append(uid)
             selected_ips.append(ip)
+            selected_coldkeys.append(coldkey)
 
     if len(selected) < k:
         bt.logging.warning(
