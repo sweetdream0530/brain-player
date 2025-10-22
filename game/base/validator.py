@@ -199,8 +199,8 @@ class BaseValidatorNeuron(BaseNeuron):
                     bt.logging.warning(
                         f"Spec version {self.spec_version} does not match subnet weights version {weights_version}. Please upgrade your code."
                     )
-                    time.sleep(10)
-                    return
+                    time.sleep(12)
+                    continue
                 # Run multiple forwards concurrently.
                 self.loop.run_until_complete(self.concurrent_forward())
 
