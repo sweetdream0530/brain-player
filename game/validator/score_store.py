@@ -233,23 +233,12 @@ class ScoreStore:
                 """
                 SELECT rs, ro, bs, bo,
                        score_rs, score_ro, score_bs, score_bo
-                FROM scores
+                FROM scores_all
                 WHERE ended_at >= ?
                 """,
                 (int(since_ts),),
             )
             rows = cur.fetchall()
-            if not rows:
-                cur.execute(
-                    """
-                    SELECT rs, ro, bs, bo,
-                           score_rs, score_ro, score_bs, score_bo
-                    FROM scores
-                    WHERE ended_at >= ?
-                    """,
-                    (int(since_ts),),
-                )
-                rows = cur.fetchall()
             for row in rows:
                 rs, ro, bs, bo, score_rs, score_ro, score_bs, score_bo = row
                 if rs:
