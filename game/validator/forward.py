@@ -365,23 +365,26 @@ async def forward(self):
             cards=cards,
         )
 
-        bt.logging.info(f"⏩ Sending query to miner {to_uid}")
         start_at = time.time()
-        responses = await self.dendrite(
-            # Send the query to selected miner axons in the network.
-            axons=[self.metagraph.axons[to_uid]],
-            # Construct a query.
-            synapse=synapse,
-            # All responses have the deserialize function called on them before returning.
-            # You are encouraged to define your own deserialization function.
-            deserialize=True,
-            timeout=30,
-        )
+        axon = self.metagraph.axons[to_uid]
+        bt.logging.info(f"⏩ Sending query to miner {to_uid}, {axon}")
+        # retry 3 time to avoid broken pipe
+        for i in range(3):
+            started_at = time.time()
+            response = await self.dendrite(
+                axons=axon,
+                synapse=synapse,
+                deserialize=True,
+                timeout=30,
+            )
+            if response or (time.time() - start_at) > 10:
+                break
+            bt.logging.info(f"⏩ Retrying query to miner {to_uid}, attempt {i+2}/3")
+
         bt.logging.info(
             f"⏩ Received response from miner {to_uid} in {time.time() - start_at:.2f}s"
         )
-
-        if len(responses) == 0 or responses[0] is None:
+        if response is None:
             game_state.gameWinner = (
                 TeamColor.RED
                 if game_state.currentTeam == TeamColor.BLUE
@@ -398,9 +401,9 @@ async def forward(self):
 
         if game_state.currentRole == Role.SPYMASTER:
             # * Get the clue and number from the responsehttps://game.shiftlayer.ai/
-            clue = responses[0].clue_text
-            number = responses[0].number
-            reasoning = responses[0].reasoning
+            clue = response.clue_text
+            number = response.number
+            reasoning = response.reasoning
 
             async def check_valid_clue(clue, number, board_words):
                 if clue is None or number is None:
@@ -422,14 +425,10 @@ async def forward(self):
 
                 bt.logging.info(f"⏩ Sending clue check query to miner {to_uid}")
                 response: GameSynapseOutput = await self.dendrite(
-                    # Send the query to selected miner axons in the network.
                     axons=self.metagraph.axons[to_uid],
-                    # Construct a query.
                     synapse=synapse,
-                    # All responses have the deserialize function called on them before returning.
-                    # You are encouraged to define your own deserialization function.
                     deserialize=True,
-                    timeout=20,
+                    timeout=30,
                 )
                 if not response or response.clue_validity:
                     return True, "Clue is valid"
@@ -506,8 +505,8 @@ async def forward(self):
 
         elif game_state.currentRole == Role.OPERATIVE:
             # * Get the guessed cards from the response
-            guesses = responses[0].guesses
-            reasoning = responses[0].reasoning
+            guesses = response.guesses
+            reasoning = response.reasoning
             bt.logging.info(f"Guessed cards: {guesses}")
             bt.logging.info(f"Reasoning: {reasoning}")
             if guesses is None:
