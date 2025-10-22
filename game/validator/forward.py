@@ -534,7 +534,7 @@ async def forward(self):
                 resetAnimations(self, game_state.cards)
                 end_reason = "no_response"
                 bt.logging.info(
-                    f"💀 No guesses received! Game over. Winner: {game_state.gameWinner}"
+                    f"❌ No guesses received! Game over. Winner: {game_state.gameWinner}"
                 )
                 game_state.chatHistory.append(
                     ChatMessage(
@@ -612,7 +612,7 @@ async def forward(self):
                     game_state.chatHistory.append(
                         ChatMessage(
                             sender=Role.OPERATIVE,
-                            message=f"Chose the assassin card '{card.word}'. Game over. Winner: {game_state.gameWinner.value.capitalize()} Team",
+                            message=f"💀 Assassin card '{card.word}' found! Game over. Winner: {game_state.gameWinner.value.capitalize()} Team",
                             team=game_state.currentTeam,
                             guesses=guesses,
                             reasoning=reasoning,
