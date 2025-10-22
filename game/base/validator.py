@@ -191,6 +191,16 @@ class BaseValidatorNeuron(BaseNeuron):
             try:
                 bt.logging.info(f"step({self.step}) block({self.block})")
 
+                # Check weights version and run if matches
+                weights_version = self.subtensor.get_subnet_hyperparameters(
+                    self.config.netuid
+                ).weights_version
+                if self.spec_version != weights_version:
+                    bt.logging.warning(
+                        f"Spec version {self.spec_version} does not match subnet weights version {weights_version}. Please upgrade your code."
+                    )
+                    time.sleep(10)
+                    return
                 # Run multiple forwards concurrently.
                 self.loop.run_until_complete(self.concurrent_forward())
 
