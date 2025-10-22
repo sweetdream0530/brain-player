@@ -56,11 +56,6 @@ async def get_random_uids(self, k: int, exclude: List[int] = None) -> np.ndarray
 
             hotkey = self.metagraph.hotkeys[uid]
             current_count = selection_counts.get(hotkey, min_selection_count)
-            ip = self.metagraph.axons[uid].ip
-
-            # Avoid selecting multiple miners from the same IP
-            if ip in selected_ips:
-                continue
 
             if current_count > min_selection_count:
                 continue
@@ -69,6 +64,14 @@ async def get_random_uids(self, k: int, exclude: List[int] = None) -> np.ndarray
                 available_pool.remove(uid)
             except ValueError:
                 pass
+
+            ip = self.metagraph.axons[uid].ip
+            # Avoid selecting multiple miners from the same IP
+            if ip in selected_ips:
+                bt.logging.info(
+                    f"Skipping UID {uid} from IP {ip} to avoid duplicates. Selected IPs: {selected_ips}"
+                )
+                continue
 
             # Mark hotkey to increase selection count
             hotkeys_to_increase.append(hotkey)
