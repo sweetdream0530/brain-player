@@ -25,6 +25,7 @@ import os
 import httpx
 from dotenv import load_dotenv
 import game
+from game.utils.ruleSysPrompt import ruleSysPrompt
 from game.utils.spySysPrompt import spySysPrompt
 from game.utils.opSysPrompt import opSysPrompt
 
@@ -276,7 +277,23 @@ class Miner(BaseMinerNeuron):
         game_id = self.get_game_id(synapse.cards)
         game_context = self.get_game_context(game_id)
 
+        async def get_gpt5_response(messages):
+            try:
+                client = OpenAI(api_key=os.environ.get("OPENAI_KEY"))
+                result = client.responses.create(
+                    model="gpt-5",
+                    input=messages,
+                    reasoning={
+                        "effort": "minimal"
+                    },  # Optional: control reasoning effort
+                )
+                return result.output_text
+            except Exception as e:
+                bt.logging.error(f"Error fetching response from GPT-4: {e}")
+                return None
+
         # Build board and clue strings outside the f-string to avoid backslash-in-expression errors.
+        messages = []
         if synapse.your_role == "operative":
             board = [
                 {
@@ -914,7 +931,11 @@ For EACH potential guess, rate confidence 1-10 and only include if >= {confidenc
                 reasoning = "Fallback due to no response"
 
         synapse.output = GameSynapseOutput(
-            clue_text=clue, number=number, reasoning=reasoning, guesses=guesses
+            clue_text=clue,
+            number=number,
+            reasoning=reasoning,
+            guesses=guesses,
+            clue_validity=valid,
         )
         bt.logging.info(f"🚀 successfully get response from llm: {synapse}")
         

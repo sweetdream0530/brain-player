@@ -99,9 +99,11 @@ class BaseValidatorNeuron(BaseNeuron):
             pass
         bt.logging.info(f"Using backend: {self.backend_base}")
         scores_endpoint = f"{self.backend_base}/api/v1/rooms/score"
+        scores_fetch_endpoint = f"{self.backend_base}/api/v1/rooms/sync"
         self.score_store = ScoreStore(
             scores_db_path,
             backend_url=scores_endpoint,
+            fetch_url=scores_fetch_endpoint,
             signer=self.build_signed_headers,
         )
         self.score_store.init(self.metagraph.hotkeys)
@@ -189,6 +191,16 @@ class BaseValidatorNeuron(BaseNeuron):
             try:
                 bt.logging.info(f"step({self.step}) block({self.block})")
 
+                # Check weights version and run if matches
+                weights_version = self.subtensor.get_subnet_hyperparameters(
+                    self.config.netuid
+                ).weights_version
+                if self.spec_version != weights_version:
+                    bt.logging.warning(
+                        f"Spec version {self.spec_version} does not match subnet weights version {weights_version}. Please upgrade your code."
+                    )
+                    time.sleep(12)
+                    continue
                 # Run multiple forwards concurrently.
                 self.loop.run_until_complete(self.concurrent_forward())
 
@@ -281,106 +293,147 @@ class BaseValidatorNeuron(BaseNeuron):
         Sets the validator weights to the metagraph hotkeys based on the scores it has received from the miners. The weights determine the trust and incentive level the validator assigns to miner nodes on the network.
         """
 
-        if hasattr(self, "score_store"):
-            window_seconds = getattr(
-                self, "scoring_window_seconds", parse_interval_to_seconds("3 days")
+        now = time.time()
+        since_ts = now - self.scoring_window_seconds
+        latest_ts = self.score_store.latest_scores_all_timestamp()
+        if latest_ts:
+            age_seconds = now - latest_ts
+            if age_seconds > 3600:
+                bt.logging.warning(
+                    f"Latest synced score is older than 1 hour ({age_seconds:.0f}s). Burning emissions."
+                )
+                zero_weights = np.zeros(self.metagraph.n, dtype=np.float32)
+                if self.metagraph.n > 0:
+                    zero_weights[0] = 1.0
+                raw_weights = zero_weights
+                (
+                    processed_weight_uids,
+                    processed_weights,
+                ) = process_weights_for_netuid(
+                    uids=self.metagraph.uids,
+                    weights=raw_weights,
+                    netuid=self.config.netuid,
+                    subtensor=self.subtensor,
+                    metagraph=self.metagraph,
+                )
+                (
+                    uint_uids,
+                    uint_weights,
+                ) = convert_weights_and_uids_for_emit(
+                    uids=processed_weight_uids, weights=processed_weights
+                )
+                result, msg = self.subtensor.set_weights(
+                    wallet=self.wallet,
+                    netuid=self.config.netuid,
+                    uids=uint_uids,
+                    weights=uint_weights,
+                    wait_for_finalization=False,
+                    wait_for_inclusion=False,
+                    version_key=self.spec_version,
+                )
+                if result is True:
+                    bt.logging.info("set_weights on chain successfully (burned)")
+                else:
+                    bt.logging.error("set_weights failed (burned)", msg)
+                return
+        games_in_window = self.score_store.games_in_window(since_ts)
+        hotkey_totals = self.score_store.window_scores_by_hotkey(since_ts)
+        window_scores = np.zeros(self.metagraph.n, dtype=np.float32)
+        for uid, hotkey in enumerate(self.metagraph.hotkeys):
+            window_scores[uid] = float(hotkey_totals.get(hotkey, 0.0))
+
+        ranked_uids = [
+            uid
+            for uid in sorted(
+                range(len(window_scores)),
+                key=lambda i: window_scores[i],
+                reverse=True,
             )
-            since_ts = time.time() - window_seconds
-            games_in_window = self.score_store.games_in_window(since_ts)
-            hotkey_totals = self.score_store.window_scores_by_hotkey(since_ts)
-            window_scores = np.zeros(self.metagraph.n, dtype=np.float32)
-            for uid, hotkey in enumerate(self.metagraph.hotkeys):
-                window_scores[uid] = float(hotkey_totals.get(hotkey, 0.0))
+            if window_scores[uid] > 0
+        ]
 
-            ranked_uids = [
-                uid
-                for uid in sorted(
-                    range(len(window_scores)),
-                    key=lambda i: window_scores[i],
-                    reverse=True,
-                )
-                if window_scores[uid] > 0
-            ]
+        if games_in_window < 300:
+            bt.logging.warning(
+                f"Not enough games in scoring window ({games_in_window} < 300); skipping set_weights."
+            )
+            return
 
-            if games_in_window < 60:
-                bt.logging.warning(
-                    f"Not enough games in scoring window ({games_in_window} < 60); skipping set_weights."
-                )
-                return
+        if self.subtensor.get_subnet_info(self.config.netuid).blocks_since_epoch < 300:
+            bt.logging.warning(
+                "Not enough blocks in current epoch; skipping set_weights."
+            )
+            return
 
-            if not ranked_uids:
-                bt.logging.warning(
-                    "No positive windowed scores available for weight setting; skipping set_weights."
-                )
-                return
+        if not ranked_uids:
+            bt.logging.warning(
+                "No positive windowed scores available for weight setting; skipping set_weights."
+            )
+            return
 
-            assigned_scores = np.zeros_like(window_scores)
-            top_count = min(3, len(ranked_uids))
-            top_uids = ranked_uids[:top_count]
-            other_uids = ranked_uids[top_count:]
+        assigned_scores = np.zeros_like(window_scores)
+        top_count = min(3, len(ranked_uids))
+        top_uids = ranked_uids[:top_count]
+        other_uids = ranked_uids[top_count:]
 
-            if top_count == 1:
-                assigned_scores[top_uids[0]] = 1.0
-                self.scores = assigned_scores
-                # No other players to allocate to.
-                # Proceed with standard normalization below.
+        if top_count == 1:
+            assigned_scores[top_uids[0]] = 1.0
+            self.scores = assigned_scores
+            # No other players to allocate to.
+            # Proceed with standard normalization below.
+        else:
+            if top_count == 2:
+                top_distribution = [0.7, 0.3]
+                remaining_pool = 0.0
             else:
-                if top_count == 2:
-                    top_distribution = [0.7, 0.3]
-                    remaining_pool = 0.0
-                else:
-                    top_distribution = [0.5, 0.25, 0.125]
-                    remaining_pool = 0.125
+                top_distribution = [0.5, 0.25, 0.125]
+                remaining_pool = 0.125
 
-                for rank, uid in enumerate(top_uids):
-                    assigned_scores[uid] = top_distribution[rank]
+            for rank, uid in enumerate(top_uids):
+                assigned_scores[uid] = top_distribution[rank]
 
-                if other_uids and remaining_pool > 0:
-                    other_totals = np.array(
-                        [window_scores[uid] for uid in other_uids], dtype=np.float32
-                    )
-                    others_sum = float(other_totals.sum())
-                    if others_sum > 0:
-                        shares = remaining_pool * (other_totals / others_sum)
-                    else:
-                        shares = np.full_like(
-                            other_totals, remaining_pool / len(other_uids)
-                        )
-                    for uid, share in zip(other_uids, shares):
-                        assigned_scores[uid] = float(share)
-
-                total_assigned = float(assigned_scores.sum())
-                if total_assigned <= 0:
-                    bt.logging.warning(
-                        "Computed distribution has zero total; skipping set_weights."
-                    )
-                    return
-
-                if total_assigned != 1.0:
-                    assigned_scores /= total_assigned
-
-                # Adjust weights by stake rank.
-                stakes = np.array(
-                    [
-                        self.metagraph.alpha_stake[uid]
-                        for uid in range(self.metagraph.n)
-                    ],
-                    dtype=np.float64,
+            if other_uids and remaining_pool > 0:
+                other_totals = np.array(
+                    [window_scores[uid] for uid in other_uids], dtype=np.float32
                 )
-                stake_ranks = np.argsort(np.argsort(-stakes)) + 1  # 1-based ranks
-                rank_weight = 1 + 1 / stake_ranks
-                rank_weight = rank_weight / rank_weight.max()
-
-                adjusted_scores = assigned_scores * rank_weight
-                total_adjusted = float(adjusted_scores.sum())
-                if total_adjusted > 0:
-                    adjusted_scores /= total_adjusted
+                others_sum = float(other_totals.sum())
+                if others_sum > 0:
+                    shares = remaining_pool * (other_totals / others_sum)
                 else:
-                    adjusted_scores = assigned_scores
+                    shares = np.full_like(
+                        other_totals, remaining_pool / len(other_uids)
+                    )
+                for uid, share in zip(other_uids, shares):
+                    assigned_scores[uid] = float(share)
 
-                self.scores = adjusted_scores
+            total_assigned = float(assigned_scores.sum())
+            if total_assigned <= 0:
+                bt.logging.warning(
+                    "Computed distribution has zero total; skipping set_weights."
+                )
+                return
 
-            bt.logging.info(f"Assigned scores: {self.scores}")
+            if total_assigned != 1.0:
+                assigned_scores /= total_assigned
+
+            # Adjust weights by stake rank.
+            stakes = np.array(
+                [self.metagraph.alpha_stake[uid] for uid in range(self.metagraph.n)],
+                dtype=np.float64,
+            )
+            stake_ranks = np.argsort(np.argsort(-stakes)) + 1  # 1-based ranks
+            rank_weight = 1 + 1 / stake_ranks
+            rank_weight = rank_weight / rank_weight.max()
+
+            adjusted_scores = assigned_scores * rank_weight
+            total_adjusted = float(adjusted_scores.sum())
+            if total_adjusted > 0:
+                adjusted_scores /= total_adjusted
+            else:
+                adjusted_scores = assigned_scores
+
+            self.scores = adjusted_scores
+
+        bt.logging.info(f"Assigned scores: {self.scores}")
         # Check if self.scores contains any NaN values and log a warning if it does.
         if np.isnan(self.scores).any():
             bt.logging.warning(

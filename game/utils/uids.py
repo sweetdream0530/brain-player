@@ -34,17 +34,20 @@ async def get_random_uids(self, k: int, exclude: List[int] = None) -> np.ndarray
 
     random.shuffle(available_pool)
     selected: List[int] = []
+    hotkeys_to_increase: List[str] = []  # Hotkeys to increase selection count for
+    selected_ips: List[str] = []  # IPs to avoid selecting duplicates
+    selected_coldkeys: List[str] = []  # Coldkeys to avoid selecting duplicates
 
     while len(selected) < k and len(available_pool) > 0:
-
         available_selection_counts = [
-            selection_counts.get(self.metagraph.axons[uid].hotkey)
+            selection_counts.get(self.metagraph.hotkeys[uid])
             for uid in available_pool
-            if self.metagraph.axons[uid].hotkey in selection_counts
+            if self.metagraph.hotkeys[uid] in selection_counts
         ]
-        min_selection_count = min(
-            available_selection_counts
-        )  # Update min_selection_count
+        if len(available_selection_counts) > 0:
+            min_selection_count = min(available_selection_counts)
+        else:
+            min_selection_count = 0
 
         for uid in available_pool:
             if len(selected) >= k:
@@ -52,7 +55,7 @@ async def get_random_uids(self, k: int, exclude: List[int] = None) -> np.ndarray
             if uid in selected:
                 continue
 
-            hotkey = self.metagraph.axons[uid].hotkey
+            hotkey = self.metagraph.hotkeys[uid]
             current_count = selection_counts.get(hotkey, min_selection_count)
 
             if current_count > min_selection_count:
@@ -60,12 +63,25 @@ async def get_random_uids(self, k: int, exclude: List[int] = None) -> np.ndarray
 
             try:
                 available_pool.remove(uid)
-                self.score_store.increment_selection_count(hotkey, uid)
-                selection_counts[hotkey] = current_count + 1
-            except Exception as err:  # noqa: BLE001
-                bt.logging.error(
-                    f"Failed to increment selection count for {hotkey}: {err}"
+            except ValueError:
+                pass
+
+            ip = self.metagraph.axons[uid].ip
+            # Avoid selecting multiple miners from the same IP
+            if ip in selected_ips:
+                bt.logging.info(
+                    f"Skipping UID {uid} from IP {ip} to avoid duplicates. Selected IPs: {selected_ips}"
                 )
+                continue
+
+            coldkey = self.metagraph.coldkeys[uid]
+            if coldkey in selected_coldkeys:
+                bt.logging.info(
+                    f"Skipping UID {uid} with coldkey {coldkey} to avoid duplicates. Selected coldkeys: {selected_coldkeys}"
+                )
+
+            # Mark hotkey to increase selection count
+            hotkeys_to_increase.append(hotkey)
 
             if uid not in successful_set:
                 continue
@@ -78,6 +94,8 @@ async def get_random_uids(self, k: int, exclude: List[int] = None) -> np.ndarray
                 continue
 
             selected.append(uid)
+            selected_ips.append(ip)
+            selected_coldkeys.append(coldkey)
 
     if len(selected) < k:
         bt.logging.warning(
@@ -85,7 +103,7 @@ async def get_random_uids(self, k: int, exclude: List[int] = None) -> np.ndarray
         )
     else:
         bt.logging.info(
-            f"Selected miners: {selected}, selected counts: {[selection_counts.get(self.metagraph.axons[uid].hotkey, 0) for uid in selected]}"
+            f"Selected miners: {selected}, selected counts: {[selection_counts.get(self.metagraph.hotkeys[uid], 0) for uid in selected]}"
         )
 
-    return np.array(selected, dtype=np.int32)
+    return selected, hotkeys_to_increase

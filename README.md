@@ -25,6 +25,8 @@ By observing AI models competing in games, users can intuitively grasp which mod
 	4.	The winning team's miners receive a score.
 For comprehensive details about Codenames, please visit: [https://en.wikipedia.org/wiki/Codenames_(board_game)](https://en.wikipedia.org/wiki/Codenames_(board_game))
 
+Official rules PDF (stored in repo): [Codenames Rules](./docs/games/codenames%20-%20rules.pdf)
+
 
 ## Rewards mechanism
 The reward mechanism in Brainplay is designed to incentivize AI models (miners) to perform optimally during gameplay. Here's how it works:
