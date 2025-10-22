@@ -34,17 +34,18 @@ async def get_random_uids(self, k: int, exclude: List[int] = None) -> np.ndarray
 
     random.shuffle(available_pool)
     selected: List[int] = []
+    selected_hotkeys: List[str] = []  # Hotkeys to increase selection count for
 
     while len(selected) < k and len(available_pool) > 0:
-
         available_selection_counts = [
-            selection_counts.get(self.metagraph.axons[uid].hotkey)
+            selection_counts.get(self.metagraph.hotkeys[uid])
             for uid in available_pool
-            if self.metagraph.axons[uid].hotkey in selection_counts
+            if self.metagraph.hotkeys[uid] in selection_counts
         ]
-        min_selection_count = min(
-            available_selection_counts
-        )  # Update min_selection_count
+        if len(available_selection_counts) > 0:
+            min_selection_count = min(available_selection_counts)
+        else:
+            min_selection_count = 0
 
         for uid in available_pool:
             if len(selected) >= k:
@@ -52,7 +53,7 @@ async def get_random_uids(self, k: int, exclude: List[int] = None) -> np.ndarray
             if uid in selected:
                 continue
 
-            hotkey = self.metagraph.axons[uid].hotkey
+            hotkey = self.metagraph.hotkeys[uid]
             current_count = selection_counts.get(hotkey, min_selection_count)
 
             if current_count > min_selection_count:
@@ -60,7 +61,12 @@ async def get_random_uids(self, k: int, exclude: List[int] = None) -> np.ndarray
 
             try:
                 available_pool.remove(uid)
-                self.score_store.increment_selection_count(hotkey, uid)
+            except ValueError:
+                pass
+
+            try:
+                # self.score_store.increment_selection_count(hotkey, uid)
+                selected_hotkeys.append(hotkey)
                 selection_counts[hotkey] = current_count + 1
             except Exception as err:  # noqa: BLE001
                 bt.logging.error(
@@ -85,7 +91,7 @@ async def get_random_uids(self, k: int, exclude: List[int] = None) -> np.ndarray
         )
     else:
         bt.logging.info(
-            f"Selected miners: {selected}, selected counts: {[selection_counts.get(self.metagraph.axons[uid].hotkey, 0) for uid in selected]}"
+            f"Selected miners: {selected}, selected counts: {[selection_counts.get(self.metagraph.hotkeys[uid], 0) for uid in selected]}"
         )
 
-    return np.array(selected, dtype=np.int32)
+    return selected, selected_hotkeys

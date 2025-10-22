@@ -35,6 +35,7 @@ class GameSynapseOutput(BaseModel):
     number: typing.Optional[int] = None
     guesses: typing.Optional[typing.List[str]] = None
     reasoning: typing.Optional[str] = None
+    clue_validity: typing.Optional[bool] = None
 
 
 class GameSynapse(bt.Synapse):

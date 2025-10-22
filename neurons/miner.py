@@ -24,6 +24,7 @@ import bittensor as bt
 import os
 from dotenv import load_dotenv
 import game
+from game.utils.ruleSysPrompt import ruleSysPrompt
 from game.utils.spySysPrompt import spySysPrompt
 from game.utils.opSysPrompt import opSysPrompt
 
@@ -132,7 +133,23 @@ class Miner(BaseMinerNeuron):
 
         bt.logging.info("💌 Received GameSynapse request")
 
+        async def get_gpt5_response(messages):
+            try:
+                client = OpenAI(api_key=os.environ.get("OPENAI_KEY"))
+                result = client.responses.create(
+                    model="gpt-5",
+                    input=messages,
+                    reasoning={
+                        "effort": "minimal"
+                    },  # Optional: control reasoning effort
+                )
+                return result.output_text
+            except Exception as e:
+                bt.logging.error(f"Error fetching response from GPT-4: {e}")
+                return None
+
         # Build board and clue strings outside the f-string to avoid backslash-in-expression errors.
+        messages = []
         if synapse.your_role == "operative":
             board = [
                 {
@@ -159,30 +176,41 @@ class Miner(BaseMinerNeuron):
         Board: {board}
 
         {clue_block}"""
-        messages: typing.List(typing.Dict) = []
-        messages.append(
-            {
-                "role": "system",
-                "content": (
-                    spySysPrompt if synapse.your_role == "spymaster" else opSysPrompt
-                ),
-            }
-        )
-        messages.append({"role": "user", "content": userPrompt})
+        messages = []
+        if synapse.your_role == "clue_validator":
+            # If the spymaster has already given a opponent's clue, validate it.
+            bt.logging.info("Validating opponent's clue...", synapse.your_clue)
+            board_words = [card.word for card in synapse.cards if not card.is_revealed]
+            messages.append({"role": "system", "content": ruleSysPrompt})
+            messages.append(
+                {
+                    "role": "user",
+                    "content": f"Clue: {synapse.your_clue}, Number: {synapse.your_number}, Board Words: {board_words}",
+                }
+            )
+        else:
+            messages.append(
+                {
+                    "role": "system",
+                    "content": (
+                        spySysPrompt
+                        if synapse.your_role == "spymaster"
+                        else opSysPrompt
+                    ),
+                }
+            )
+            messages.append({"role": "user", "content": userPrompt})
 
-        async def get_gpt4_response(messages):
-            try:
-                client = OpenAI(api_key=os.environ.get("OPENAI_KEY"))
-                response = client.chat.completions.create(
-                    model="gpt-4o", messages=messages
-                )
-                return response.choices[0].message.content
-            except Exception as e:
-                bt.logging.error(f"Error fetching response from GPT-4: {e}")
-                return None
-
-        response_str = await get_gpt4_response(messages)
+        response_str = await get_gpt5_response(messages)
         response_dict = json.loads(response_str)
+        if "valid" in response_dict:
+            valid = response_dict["valid"]
+            if valid is False:
+                bt.logging.warning(
+                    f"🚨 Invalid clue detected: {synapse.your_clue}, reason: {response_dict['reasoning']}"
+                )
+        else:
+            valid = None
         if "clue" in response_dict:
             clue = response_dict["clue"]
         else:
@@ -198,12 +226,15 @@ class Miner(BaseMinerNeuron):
 
         if "guesses" in response_dict:
             guesses = response_dict["guesses"]
-            print(guesses)
         else:
             guesses = None
 
         synapse.output = GameSynapseOutput(
-            clue_text=clue, number=number, reasoning=reasoning, guesses=guesses
+            clue_text=clue,
+            number=number,
+            reasoning=reasoning,
+            guesses=guesses,
+            clue_validity=valid,
         )
         bt.logging.info(f"🚀 successfully get response from llm: {synapse.output}")
 
