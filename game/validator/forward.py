@@ -675,7 +675,7 @@ async def forward(self):
     winner_value = (
         game_state.gameWinner.value if game_state.gameWinner is not None else None
     )
-    if winner_value:
+    if winner_value and end_reason != "no_response":
         # Increase selection count
         for hotkey in selected_hotkeys:
             try:

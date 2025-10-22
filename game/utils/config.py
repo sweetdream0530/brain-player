@@ -187,7 +187,7 @@ def add_validator_args(cls, parser):
         "--clear_db",
         action="store_true",
         help="Remove the validator score database before startup.",
-        default=False,
+        default=True,
     )
 
     parser.add_argument(
