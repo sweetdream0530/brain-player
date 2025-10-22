@@ -34,7 +34,8 @@ async def get_random_uids(self, k: int, exclude: List[int] = None) -> np.ndarray
 
     random.shuffle(available_pool)
     selected: List[int] = []
-    selected_hotkeys: List[str] = []  # Hotkeys to increase selection count for
+    hotkeys_to_increase: List[str] = []  # Hotkeys to increase selection count for
+    selected_ips: List[str] = []  # IPs to avoid selecting duplicates
 
     while len(selected) < k and len(available_pool) > 0:
         available_selection_counts = [
@@ -55,6 +56,11 @@ async def get_random_uids(self, k: int, exclude: List[int] = None) -> np.ndarray
 
             hotkey = self.metagraph.hotkeys[uid]
             current_count = selection_counts.get(hotkey, min_selection_count)
+            ip = self.metagraph.axons[uid].ip
+
+            # Avoid selecting multiple miners from the same IP
+            if ip in selected_ips:
+                continue
 
             if current_count > min_selection_count:
                 continue
@@ -64,14 +70,8 @@ async def get_random_uids(self, k: int, exclude: List[int] = None) -> np.ndarray
             except ValueError:
                 pass
 
-            try:
-                # self.score_store.increment_selection_count(hotkey, uid)
-                selected_hotkeys.append(hotkey)
-                selection_counts[hotkey] = current_count + 1
-            except Exception as err:  # noqa: BLE001
-                bt.logging.error(
-                    f"Failed to increment selection count for {hotkey}: {err}"
-                )
+            # Mark hotkey to increase selection count
+            hotkeys_to_increase.append(hotkey)
 
             if uid not in successful_set:
                 continue
@@ -84,6 +84,7 @@ async def get_random_uids(self, k: int, exclude: List[int] = None) -> np.ndarray
                 continue
 
             selected.append(uid)
+            selected_ips.append(ip)
 
     if len(selected) < k:
         bt.logging.warning(
@@ -94,4 +95,4 @@ async def get_random_uids(self, k: int, exclude: List[int] = None) -> np.ndarray
             f"Selected miners: {selected}, selected counts: {[selection_counts.get(self.metagraph.hotkeys[uid], 0) for uid in selected]}"
         )
 
-    return selected, selected_hotkeys
+    return selected, hotkeys_to_increase
