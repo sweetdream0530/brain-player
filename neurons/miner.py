@@ -721,7 +721,8 @@ For EACH potential guess, rate confidence 1-10 and only include if >= {confidenc
                             "stream": False  # Non-streaming for reliability
                         }
                         
-                        async with httpx.AsyncClient(timeout=45.0) as client:  # Increased timeout
+                        # Validator has 30s timeout with 3 retries, so we have ~25s per attempt
+                        async with httpx.AsyncClient(timeout=25.0) as client:
                             response = await client.post(chutes_inference_url, headers=headers, json=body)
                             
                             if response.status_code != 200:
@@ -801,6 +802,7 @@ For EACH potential guess, rate confidence 1-10 and only include if >= {confidenc
         number = None
         reasoning = None
         guesses = None
+        valid = True  # Initialize clue validity flag
         
         # Robust JSON parsing with fallback
         if response_str:
@@ -824,12 +826,21 @@ For EACH potential guess, rate confidence 1-10 and only include if >= {confidenc
                     reasoning = response_dict.get("reasoning")
                     
                     # Validate clue before sending
-                    if clue and not self.validate_clue(clue, unrevealed_words):
-                        bt.logging.warning(f"Invalid clue detected: '{clue}'. Attempting safer fallback.")
-                        # Fallback to a very safe generic clue
-                        clue = "THING"
-                        number = 1
-                        reasoning = "Using safe fallback clue due to validation failure"
+                    if clue:
+                        is_valid = self.validate_clue(clue, unrevealed_words)
+                        if not is_valid:
+                            bt.logging.warning(f"Invalid clue detected: '{clue}'. Attempting safer fallback.")
+                            valid = False
+                            # Fallback to a very safe generic clue
+                            clue = "THING"
+                            number = 1
+                            reasoning = "Using safe fallback clue due to validation failure"
+                        else:
+                            valid = True
+                            bt.logging.debug(f"Clue '{clue}' validated successfully")
+                    else:
+                        valid = False
+                        bt.logging.warning("No clue provided by LLM")
                     
                     # Ensure number is valid
                     if number:
@@ -858,6 +869,7 @@ For EACH potential guess, rate confidence 1-10 and only include if >= {confidenc
                     
                     # Filter by confidence and validity
                     filtered_guesses = []
+                    all_valid = True
                     for guess_obj in guesses_with_confidence:
                         word = guess_obj.get("word", guess_obj) if isinstance(guess_obj, dict) else guess_obj
                         confidence = guess_obj.get("confidence", 7) if isinstance(guess_obj, dict) else 7
@@ -865,6 +877,7 @@ For EACH potential guess, rate confidence 1-10 and only include if >= {confidenc
                         # Check if word is on board and unrevealed
                         if word not in unrevealed_words:
                             bt.logging.debug(f"Skipping invalid word: {word}")
+                            all_valid = False
                             continue
                         
                         # Check confidence threshold
@@ -875,6 +888,8 @@ For EACH potential guess, rate confidence 1-10 and only include if >= {confidenc
                         filtered_guesses.append(word)
                     
                     guesses = filtered_guesses
+                    # Operative guesses are valid if we have at least some valid guesses
+                    valid = len(guesses) > 0 and all_valid
                     
                     if len(filtered_guesses) != len(guesses_with_confidence):
                         bt.logging.info(f"Confidence filtering: {len(guesses_with_confidence)} -> {len(filtered_guesses)} guesses (threshold: {confidence_threshold})")
@@ -882,6 +897,7 @@ For EACH potential guess, rate confidence 1-10 and only include if >= {confidenc
                     if not guesses:
                         bt.logging.warning("No valid high-confidence guesses provided")
                         guesses = []
+                        valid = True  # Empty guesses are valid (passing turn)
                         
             except json.JSONDecodeError as e:
                 bt.logging.error(f"Failed to parse JSON response: {e}. Response: {response_str[:200]}")
@@ -898,11 +914,13 @@ For EACH potential guess, rate confidence 1-10 and only include if >= {confidenc
                         clue = "THING"
                         number = 1
                     reasoning = "Fallback due to parsing error - using safe generic clue"
+                    valid = True  # Fallback clues are simple but valid
                     bt.logging.warning(f"Using fallback clue: {clue}:{number}")
                 else:
                     # Operative: don't guess randomly, skip turn
                     guesses = []
                     reasoning = "Fallback due to parsing error - skipping to avoid bad guess"
+                    valid = True  # Passing turn is valid
             except Exception as e:
                 bt.logging.error(f"Unexpected error processing response: {e}")
                 if synapse.your_role == "spymaster":
@@ -915,10 +933,12 @@ For EACH potential guess, rate confidence 1-10 and only include if >= {confidenc
                         clue = "THING"
                         number = 1
                     reasoning = "Fallback due to error - using safe generic clue"
+                    valid = True  # Fallback clues are simple but valid
                     bt.logging.warning(f"Using fallback clue: {clue}:{number}")
                 else:
                     guesses = []
                     reasoning = "Fallback due to error - skipping to avoid bad guess"
+                    valid = True  # Passing turn is valid
         else:
             bt.logging.error("No response from GPT-4")
             # Safe defaults
@@ -926,9 +946,11 @@ For EACH potential guess, rate confidence 1-10 and only include if >= {confidenc
                 clue = "THING"
                 number = 1
                 reasoning = "Fallback due to no response"
+                valid = True  # Simple fallback is valid
             else:
                 guesses = []
                 reasoning = "Fallback due to no response"
+                valid = True  # Passing turn is valid
 
         synapse.output = GameSynapseOutput(
             clue_text=clue,
