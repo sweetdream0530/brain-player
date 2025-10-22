@@ -494,8 +494,8 @@ async def forward(self):
                         sender=Role.SPYMASTER,
                         message=f"Gave invalid clue '{clue}' with number {number}. Reason: {reason}",
                         team=game_state.currentTeam,
-                        clueText=clue,
-                        number=number,
+                        clueText="null" if clue is None else clue,
+                        number=-1 if number is None else number,
                         reasoning=reasoning,
                     )
                 )
