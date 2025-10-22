@@ -51,8 +51,8 @@ class ChatMessage(NamedTuple):
 
 
 class Clue(BaseModel):
-    clueText: str
-    number: int
+    clueText: str | None
+    number: int | None
 
 
 class TParticipant(BaseModel):

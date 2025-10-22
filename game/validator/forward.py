@@ -467,6 +467,11 @@ async def forward(self):
             board_words = [
                 card.word for card in game_state.cards if not card.is_revealed
             ]
+
+            game_state.currentClue = Clue(clueText=clue, number=number)
+            game_state.currentClue.clueText = clue
+            game_state.currentClue.number = number
+
             valid, reason = await check_valid_clue(clue, number, board_words)
 
             if not valid:
@@ -484,11 +489,20 @@ async def forward(self):
                 bt.logging.info(
                     f"💀 Invalid clue! Game over. Winner: {game_state.gameWinner}"
                 )
+                game_state.chatHistory.append(
+                    ChatMessage(
+                        sender=Role.SPYMASTER,
+                        message=f"Gave invalid clue '{clue}' with number {number}. Reason: {reason}",
+                        team=game_state.currentTeam,
+                        clueText=clue,
+                        number=number,
+                        reasoning=reasoning,
+                    )
+                )
+
                 await update_room(self, game_state, roomId)
                 # time.sleep(5)
                 break
-
-            game_state.currentClue = Clue(clueText=clue, number=number)
 
             game_state.chatHistory.append(
                 ChatMessage(
@@ -500,8 +514,6 @@ async def forward(self):
                     reasoning=reasoning,
                 )
             )
-            game_state.currentClue.clueText = clue
-            game_state.currentClue.number = number
 
         elif game_state.currentRole == Role.OPERATIVE:
             # * Get the guessed cards from the response
@@ -523,6 +535,15 @@ async def forward(self):
                 end_reason = "no_response"
                 bt.logging.info(
                     f"💀 No guesses received! Game over. Winner: {game_state.gameWinner}"
+                )
+                game_state.chatHistory.append(
+                    ChatMessage(
+                        sender=Role.OPERATIVE,
+                        message=f"No guesses provided.",
+                        team=game_state.currentTeam,
+                        guesses=[],
+                        reasoning="No guesses provided.",
+                    )
                 )
                 await update_room(self, game_state, roomId)
                 break
@@ -547,6 +568,15 @@ async def forward(self):
                     bt.logging.info(
                         f"🎉 All red cards found! Winner: {game_state.gameWinner}"
                     )
+                    game_state.chatHistory.append(
+                        ChatMessage(
+                            sender=Role.OPERATIVE,
+                            message=f"🎉 All red cards found! Winner: {game_state.gameWinner.value.capitalize()} Team",
+                            team=game_state.currentTeam,
+                            guesses=guesses,
+                            reasoning=reasoning,
+                        )
+                    )
                     await update_room(self, game_state, roomId)
                     break
                 elif game_state.remainingBlue == 0:
@@ -555,6 +585,15 @@ async def forward(self):
                     end_reason = "blue_all_cards"
                     bt.logging.info(
                         f"🎉 All blue cards found! Winner: {game_state.gameWinner}"
+                    )
+                    game_state.chatHistory.append(
+                        ChatMessage(
+                            sender=Role.OPERATIVE,
+                            message=f"🎉 All blue cards found! Winner: {game_state.gameWinner.value.capitalize()} Team",
+                            team=game_state.currentTeam,
+                            guesses=guesses,
+                            reasoning=reasoning,
+                        )
                     )
                     await update_room(self, game_state, roomId)
                     break
@@ -570,8 +609,16 @@ async def forward(self):
                     bt.logging.info(
                         f"💀 Assassin card '{card.word}' found! Game over. Winner: {game_state.gameWinner}"
                     )
+                    game_state.chatHistory.append(
+                        ChatMessage(
+                            sender=Role.OPERATIVE,
+                            message=f"Chose the assassin card '{card.word}'. Game over. Winner: {game_state.gameWinner.value.capitalize()} Team",
+                            team=game_state.currentTeam,
+                            guesses=guesses,
+                            reasoning=reasoning,
+                        )
+                    )
                     await update_room(self, game_state, roomId)
-                    # time.sleep(5)
                     break
                 if card.color != game_state.currentTeam.value:
                     # If the card is not of our team color, we break
@@ -614,7 +661,7 @@ async def forward(self):
         game_step += 1
 
         await update_room(self, game_state, roomId)
-        # time.sleep(2)
+
     # * Game over
     ended_at = time.time()
     winner_value = (
