@@ -395,6 +395,14 @@ async def forward(self):
             bt.logging.info(
                 f"💀 No response received! Game over. Winner: {game_state.gameWinner}"
             )
+            game_state.chatHistory.append(
+                ChatMessage(
+                    sender=your_role,
+                    message=f"💀 No response received! Game over. Winner: {game_state.gameWinner}",
+                    team=game_state.currentTeam,
+                    reasoning="No response received.",
+                )
+            )
             # End the game and remove from gameboard after 10 seconds
             await update_room(self, game_state, roomId)
             break
