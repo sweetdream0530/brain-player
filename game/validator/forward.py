@@ -398,7 +398,7 @@ async def forward(self):
             game_state.chatHistory.append(
                 ChatMessage(
                     sender=your_role,
-                    message=f"💀 No response received! Game over. Winner: {game_state.gameWinner}",
+                    message=f"❌ No response received! Game over.",
                     team=game_state.currentTeam,
                     reasoning="No response received.",
                 )
@@ -547,7 +547,7 @@ async def forward(self):
                 game_state.chatHistory.append(
                     ChatMessage(
                         sender=Role.OPERATIVE,
-                        message=f"No guesses provided.",
+                        message=f"❌ No guesses provided.",
                         team=game_state.currentTeam,
                         guesses=[],
                         reasoning="No guesses provided.",
