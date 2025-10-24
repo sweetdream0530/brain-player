@@ -197,6 +197,61 @@ class Miner(BaseMinerNeuron):
         # This helps us avoid those words
         return revealed_opponent_words
     
+    def validate_clue_targets(self, reasoning: str, your_team: str, cards: list) -> tuple:
+        """
+        Extract target words from reasoning and verify they're your team's color.
+        
+        Args:
+            reasoning: The LLM's reasoning string
+            your_team: Your team color ('red' or 'blue')
+            cards: List of all card objects
+            
+        Returns:
+            tuple: (is_valid, error_message, correct_targets)
+        """
+        import re
+        
+        # Extract words mentioned in reasoning (look for capitalized words)
+        word_pattern = r'\b([A-Z]{2,})\b'
+        mentioned_words = re.findall(word_pattern, reasoning)
+        
+        # Get card colors (only unrevealed cards)
+        card_map = {card.word: card.color for card in cards if not card.is_revealed}
+        
+        # Check each mentioned word
+        correct_targets = []
+        bystander_words = []
+        opponent_words = []
+        assassin_words = []
+        
+        for word in set(mentioned_words):  # Use set to avoid duplicates
+            if word in card_map:
+                color = card_map[word]
+                if color == your_team:
+                    correct_targets.append(word)
+                elif color == 'bystander':
+                    bystander_words.append(word)
+                elif color == 'assassin':
+                    assassin_words.append(word)
+                else:
+                    # Opponent's word
+                    opponent_words.append(word)
+        
+        # Build error message if any wrong colors found
+        error_parts = []
+        if opponent_words:
+            error_parts.append(f"❌ Opponent's words: {', '.join(opponent_words)}")
+        if bystander_words:
+            error_parts.append(f"⚠️ Bystanders: {', '.join(bystander_words)}")
+        if assassin_words:
+            error_parts.append(f"💀 ASSASSIN: {', '.join(assassin_words)}")
+        
+        if error_parts:
+            error_msg = " | ".join(error_parts)
+            return False, error_msg, correct_targets
+        
+        return True, None, correct_targets
+    
     def validate_clue(self, clue: str, board_words: list) -> bool:
         """
         Pre-validate a clue to ensure it doesn't contain board words or their substrings.
@@ -269,6 +324,33 @@ class Miner(BaseMinerNeuron):
         """
 
         bt.logging.info("💌 Received GameSynapse request")
+        
+        # CRITICAL: Handle clue_validator role separately
+        # This role validates OPPONENT's clues, NOT guessing!
+        if synapse.your_role == "clue_validator":
+            bt.logging.info(f"🔍 Validating opponent's clue: '{synapse.your_clue}' (number: {synapse.your_number})")
+            
+            # Get all board words for validation
+            board_words = [card.word for card in synapse.cards]
+            
+            # Validate the opponent's clue
+            is_valid = self.validate_clue(synapse.your_clue, board_words)
+            
+            if is_valid:
+                bt.logging.info(f"✅ Opponent's clue '{synapse.your_clue}' is VALID")
+                reasoning = f"Opponent's clue '{synapse.your_clue}:{synapse.your_number}' is valid - no rule violations detected"
+            else:
+                bt.logging.warning(f"❌ Opponent's clue '{synapse.your_clue}' is INVALID")
+                reasoning = f"Opponent's clue '{synapse.your_clue}:{synapse.your_number}' is invalid - violates substring/board word rules"
+            
+            # Return validation result WITHOUT guesses
+            return synapse.copy(update=dict(output=GameSynapseOutput(
+                clue_text=None,
+                number=None,
+                guesses=[],  # CRITICAL: Empty guesses! We're validating, not playing!
+                reasoning=reasoning,
+                clue_validity=is_valid
+            )))
         
         # Cleanup old games periodically
         self.cleanup_old_games()
@@ -717,8 +799,9 @@ For EACH potential guess, rate confidence 1-10 and only include if >= {confidenc
                             "model": chutes_model,
                             "messages": messages,
                             "temperature": adjusted_temperature,
-                            "max_tokens": 1800,  # Doubled to prevent truncation
-                            "stream": False  # Non-streaming for reliability
+                            "max_tokens": 2400,  # Doubled to prevent truncation
+                            "stream": False,  # Non-streaming for reliability
+                            "response_format": {"type": "json_object"}  # Force JSON output
                         }
                         
                         # Validator has 30s timeout with 3 retries, so we have ~25s per attempt
@@ -737,21 +820,54 @@ For EACH potential guess, rate confidence 1-10 and only include if >= {confidenc
                             
                             response_text = response_json["choices"][0]["message"]["content"]
                         
-                        if not response_text.strip():
+                        # Debug: Log what we actually received
+                        bt.logging.debug(f"Raw response from Chutes.ai (first 200 chars): {response_text[:200] if response_text else 'EMPTY'}")
+                        
+                        if not response_text or not response_text.strip():
+                            bt.logging.error(f"Chutes API returned empty response. Full response_json: {response_json}")
                             raise Exception("Chutes API returned empty response")
                         
-                        # Validate JSON is complete before returning
-                        test_cleaned = response_text.strip()
-                        if test_cleaned.startswith("```"):
-                            first_newline = test_cleaned.find('\n')
-                            if first_newline != -1:
-                                test_cleaned = test_cleaned[first_newline + 1:]
-                            if test_cleaned.endswith("```"):
-                                test_cleaned = test_cleaned[:-3].strip()
+                        # Clean response: Strip markdown code blocks and extract JSON
+                        cleaned_response = response_text.strip()
                         
-                        # Check if response is valid JSON
+                        # Handle markdown code blocks (Chutes.ai often wraps in ```json ... ```)
+                        if cleaned_response.startswith("```"):
+                            # Remove opening ``` and optional language identifier
+                            first_newline = cleaned_response.find('\n')
+                            if first_newline != -1:
+                                cleaned_response = cleaned_response[first_newline + 1:]
+                            # Remove closing ```
+                            if cleaned_response.endswith("```"):
+                                cleaned_response = cleaned_response[:-3].strip()
+                        
+                        # Handle case where response starts with markdown headers or text
+                        # Look for JSON object starting with { or array starting with [
+                        if not cleaned_response.startswith('{') and not cleaned_response.startswith('['):
+                            # Try to extract JSON from the response
+                            json_start = cleaned_response.find('{')
+                            if json_start != -1:
+                                # Find matching closing brace
+                                brace_count = 0
+                                json_end = -1
+                                for i in range(json_start, len(cleaned_response)):
+                                    if cleaned_response[i] == '{':
+                                        brace_count += 1
+                                    elif cleaned_response[i] == '}':
+                                        brace_count -= 1
+                                        if brace_count == 0:
+                                            json_end = i + 1
+                                            break
+                                if json_end != -1:
+                                    cleaned_response = cleaned_response[json_start:json_end]
+                                    bt.logging.warning(f"Extracted JSON from markdown response")
+                                else:
+                                    bt.logging.error(f"Could not find matching closing brace in response")
+                            else:
+                                bt.logging.error(f"No JSON object found in response starting with: {cleaned_response[:100]}")
+                        
+                        # Validate that cleaned response is valid JSON
                         try:
-                            test_json = json.loads(test_cleaned)
+                            test_json = json.loads(cleaned_response)
                             # Verify required fields exist
                             if synapse.your_role == "spymaster":
                                 if "clue" not in test_json or "number" not in test_json:
@@ -763,9 +879,12 @@ For EACH potential guess, rate confidence 1-10 and only include if >= {confidenc
                                     raise Exception("Incomplete JSON response")
                         except json.JSONDecodeError as e:
                             bt.logging.warning(f"Invalid JSON from Chutes.ai, retrying: {e}")
+                            bt.logging.error(f"Problematic response text (first 500 chars): {cleaned_response[:500]}")
                             raise Exception(f"Invalid JSON: {e}")
                         
-                        return response_text
+                        # Return the CLEANED response (without markdown)
+                        bt.logging.debug(f"Successfully validated response, returning cleaned JSON")
+                        return cleaned_response
                         
                     else:
                         # Use standard OpenAI API
@@ -825,7 +944,29 @@ For EACH potential guess, rate confidence 1-10 and only include if >= {confidenc
                     number = response_dict.get("number")
                     reasoning = response_dict.get("reasoning")
                     
-                    # Validate clue before sending
+                    # STEP 1: Validate target word colors
+                    if reasoning:
+                        targets_valid, color_error, correct_targets = self.validate_clue_targets(
+                            reasoning, synapse.your_team, synapse.cards
+                        )
+                        
+                        if not targets_valid and color_error:
+                            bt.logging.warning(f"🚨 WRONG COLOR TARGETS: {color_error}")
+                            bt.logging.warning(f"Reasoning was: {reasoning[:300]}")
+                            
+                            # Adjust number to match only correct targets
+                            if correct_targets:
+                                number = len(correct_targets)
+                                bt.logging.info(f"✅ Adjusted to {number} correct targets: {correct_targets}")
+                            else:
+                                # No valid targets at all, use safe fallback
+                                bt.logging.error("❌ No valid targets found, using safe fallback")
+                                clue = "THING"
+                                number = 1
+                                reasoning = f"Fallback: Original targets had wrong colors ({color_error})"
+                                valid = True
+                    
+                    # STEP 2: Validate clue word itself (no board words/substrings)
                     if clue:
                         is_valid = self.validate_clue(clue, unrevealed_words)
                         if not is_valid:

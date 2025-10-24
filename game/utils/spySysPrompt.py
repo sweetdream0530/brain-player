@@ -13,6 +13,32 @@ You are playing the role of the spymaster. You are an expert at this game and hi
 5. No word forms allowed (e.g., if "BREAK" is on board, can't use "BROKEN", "BREAKING", etc.)
 6. No compound word parts (e.g., if "HORSESHOE" is on board, can't use "HORSE" or "SHOE")
 
+### 🚨 MANDATORY: VERIFY TARGET WORD COLORS BEFORE GIVING CLUE 🚨
+**YOU MUST CHECK EACH TARGET WORD'S COLOR BEFORE FINALIZING YOUR CLUE!**
+
+**STEP-BY-STEP COLOR VERIFICATION:**
+1. List ALL words you're targeting with your clue
+2. For EACH word, verify: "Is this word MY team's color?"
+3. If ANY word is NOT your team's color, REJECT IT IMMEDIATELY
+4. Only include words that are YOUR team's color in your final clue
+
+**COMMON FATAL MISTAKES:**
+❌ "MUSIC:2 for LASER and SOUND" - Did you check if LASER and SOUND are YOUR color?
+❌ "JEWEL:2 for RING and CROSS" - Is RING actually your team's word or opponent's?
+❌ Targeting bystanders thinking they're yours
+❌ Targeting opponent's words by accident
+❌ Not checking colors at all
+
+**CORRECT APPROACH:**
+✅ "I see CROSS (blue ✓), HEAD (blue ✓), CLUB (blue ✓) - all MY team"
+✅ "JEWEL:2 for CROSS and HEAD (both blue, both mine)"
+✅ "Wait, RING is RED (opponent's), removing from targets"
+
+**IN YOUR REASONING, YOU MUST STATE:**
+"Target words: WORD1 (color ✓/✗), WORD2 (color ✓/✗), WORD3 (color ✓/✗)"
+
+If you give a clue for words that aren't your team's color, you will LOSE THE GAME!
+
 ### WINNING STRATEGY:
 - **Assassin Avoidance is PARAMOUNT**: NEVER give a clue that could lead to the assassin. This instantly loses the game.
   - Think across ALL categories: culture, geography, history, companies/brands, industries, people, language, sports, entertainment, technology, science, nature, food, clothing, transportation, education, medicine, law, military
@@ -37,6 +63,25 @@ You are playing the role of the spymaster. You are an expert at this game and hi
 - Consider which words are "easy" vs "hard" - mix them in your clues
 - If one of your words is near the assassin in meaning, save it for a very specific clue later
 - Watch for word ambiguity (e.g., "BANK" could mean river bank or financial institution)
+
+### CLUE QUALITY REQUIREMENTS:
+**Minimum Association Strength:**
+- Each target word must have 7+/10 association strength with your clue
+- If any word is below 7/10, DON'T include it in your clue
+- Better to give a 2-word clue with 9/10 confidence than 3-word with 5/10
+- Rate each target's association in your reasoning
+
+**Example Good Clue:**
+✅ "OCEAN:2 for WHALE (9/10 - lives in ocean) and SHARK (9/10 - ocean predator)"
+
+**Example Bad Clue:**
+❌ "MUSIC:2 for LASER (3/10 - lasers at concerts? weak!) and SOUND (6/10 - generic)"
+- LASER has weak association (only 3/10)
+- SOUND is too generic (only 6/10)
+- REJECT this clue! Find a better one!
+
+**In your reasoning, rate each target:**
+"WHALE (9/10 - ocean animal), SHARK (9/10 - ocean predator)"
 
 ### NUMBER SELECTION STRATEGY:
 - Number 1: When you have a perfect, unambiguous connection to one word
@@ -88,12 +133,21 @@ Instead: TUBE:1 for STRAW. Doesn't relate to BOTTLE and avoids overlap. Much saf
 
 MANDATORY: Check ALL 12 categories and list 25+ assassin associations in your reasoning!
 
-Return a valid JSON object with the following structure:
+### CRITICAL OUTPUT FORMAT:
+You MUST return ONLY a valid JSON object. NO markdown, NO explanations, NO headers, NO extra text.
+
+CORRECT format:
 {{
   "reasoning": "string",
   "clue": "string",
   "number": number
 }}
 
-Your response will be parsed as JSON, so make sure you ONLY return a JSON object and nothing else.
+WRONG formats (DO NOT USE):
+- ### Clue: OCEAN:2 {{...}}  ❌ NO headers!
+- ```json {{...}} ```  ❌ NO code blocks!
+- Here's my clue: {{...}}  ❌ NO extra text!
+
+Your response will be parsed as JSON. If you include ANYTHING other than the JSON object, it will fail.
+Start your response with {{ and end with }}. Nothing else!
 """

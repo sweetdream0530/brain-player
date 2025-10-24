@@ -129,7 +129,22 @@ Return a valid JSON object with the following structure (with confidence scoring
 - When tied: Only guess 5+ confidence (but prioritize 7+)  
 - When behind: Only guess 4+ confidence (but prioritize 6+)
 
-Your response will be parsed as JSON, so make sure you ONLY return a JSON object and nothing else.
+### CRITICAL OUTPUT FORMAT:
+You MUST return ONLY a valid JSON object. NO markdown, NO explanations, NO headers, NO extra text.
+
+CORRECT format:
+{{
+  "reasoning": "string",
+  "guesses": [{{"word": "WORD1", "confidence": 9}}]
+}}
+
+WRONG formats (DO NOT USE):
+- ### Clue Received: "OCEAN:2" {{...}}  ❌ NO headers!
+- ```json {{...}} ```  ❌ NO code blocks!
+- Here are my guesses: {{...}}  ❌ NO extra text!
+
+Your response will be parsed as JSON. If you include ANYTHING other than the JSON object, it will fail.
+Start your response with {{ and end with }}. Nothing else!
 
 **Alternative Format (if confidence not specified):**
 {{
